@@ -1,0 +1,53 @@
+api_version: rca/v1
+project: test-multi
+description: Nginx + Redis.
+
+hosts:
+  host1:
+    type: linux
+    address: 127.0.0.1
+    user: deploy
+
+components:
+  cache:
+    source:
+      type: docker
+      image: redis
+      tag: "7-alpine"
+    run:
+      type: docker
+      container_name: rca-test-cache
+      ports: ["16379:6379"]
+      restart: unless-stopped
+    healthcheck:
+      type: tcp
+      port: 16379
+      interval: 2s
+      start_period: 2s
+      retries: 5
+    deploy_mode: cold
+
+  web:
+    source:
+      type: docker
+      image: nginx
+      tag: "1.27-alpine"
+    run:
+      type: docker
+      container_name: rca-test-web
+      ports: ["18081:80"]
+      restart: unless-stopped
+    healthcheck:
+      type: http
+      url: http://127.0.0.1:18081/
+      expect_status: 200
+      interval: 2s
+      start_period: 3s
+      retries: 10
+    depends_on: [cache]
+    deploy_mode: cold
+
+deployment:
+  - host: host1
+    components: [cache, web]
+    strategy: sequential

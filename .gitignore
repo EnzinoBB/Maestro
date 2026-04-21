@@ -1,0 +1,53 @@
+# Build artifacts
+dist/
+*.exe
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node (if ever used by the UI)
+node_modules/
+
+# Runtime databases / state
+*.db
+*.db-wal
+*.db-shm
+control-plane.db
+state.db
+
+# Logs
+*.log
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Local configuration with real secrets (NEVER commit)
+docker-compose.yml
+credentials.yaml
+/etc_rcad_config.yaml
+daemon-config.yaml
+.env
+.env.*
+!.env.example
+
+# Local SSH keys used only for dev test hosts
+*.pem
+id_rsa*

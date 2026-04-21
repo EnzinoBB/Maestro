@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RCA Control Plane</title>
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<style>
+:root { color-scheme: light dark; }
+body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 0; padding: 0; background:#0f1419; color:#d3d7dd; }
+header { padding: 12px 20px; background:#1c2128; border-bottom:1px solid #30363d; display:flex; gap:18px; align-items:center; }
+header h1 { font-size:16px; margin:0; font-weight:600; }
+nav a { color:#58a6ff; text-decoration:none; padding:4px 10px; border-radius:6px; }
+nav a:hover { background:#262c36; }
+main { padding: 20px; }
+section { margin-bottom: 24px; }
+h2 { font-size: 14px; text-transform:uppercase; letter-spacing: .05em; color:#8b949e; border-bottom:1px solid #30363d; padding-bottom:4px; }
+table { width:100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 6px 10px; text-align:left; border-bottom: 1px solid #21262d; }
+th { color:#8b949e; font-weight:600; }
+.badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+.b-running { background:#1a7f37; color:white; }
+.b-failed, .b-host_offline { background:#b62324; color:white; }
+.b-stopped, .b-unknown { background:#6e7681; color:white; }
+.b-deploying { background:#9e6a03; color:white; }
+textarea { width:100%; height: 320px; font-family: ui-monospace, monospace; font-size: 12.5px; background:#0d1117; color:#e6edf3; border:1px solid #30363d; padding:10px; border-radius:6px; }
+button { background:#238636; color:white; border:none; padding:7px 14px; border-radius:6px; cursor:pointer; font-size:13px; }
+button.secondary { background:#30363d; }
+button.danger { background:#b62324; }
+pre { background:#0d1117; border:1px solid #30363d; padding: 10px; border-radius:6px; overflow:auto; max-height: 300px; }
+.row { display:flex; gap: 10px; align-items:flex-start; }
+.grow { flex:1; }
+.msg { padding: 10px; border-radius:6px; margin:8px 0; font-size:13px; }
+.msg-ok { background:#0f5524; color:#dfffe5; }
+.msg-err { background:#5a1214; color:#ffd2d2; }
+</style>
+</head>
+<body>
+<header>
+  <h1>RCA Control Plane</h1>
+  <nav>
+    <a href="/">Dashboard</a>
+    <a href="#editor">YAML</a>
+    <a href="#history">History</a>
+  </nav>
+</header>
+<main>
+
+<section>
+  <h2>Hosts</h2>
+  <div hx-get="/api/hosts" hx-trigger="load, every 5s" hx-swap="innerHTML">
+    <em>loading…</em>
+  </div>
+</section>
+
+<section>
+  <h2>State</h2>
+  <div hx-get="/ui/state-table" hx-trigger="load, every 3s" hx-swap="innerHTML">
+    <em>loading…</em>
+  </div>
+</section>
+
+<section id="editor">
+  <h2>Configuration</h2>
+  <div class="row">
+    <form class="grow" hx-post="/ui/validate" hx-target="#validate-result" hx-swap="innerHTML">
+      <textarea id="yaml" name="yaml_text" placeholder="Paste deployment.yaml here"></textarea>
+      <div style="margin-top:8px; display:flex; gap:6px;">
+        <button type="submit" class="secondary">Validate</button>
+        <button type="button" class="secondary"
+                hx-post="/ui/diff" hx-target="#validate-result" hx-include="#yaml">Diff</button>
+        <button type="button"
+                hx-post="/ui/apply?dry_run=false" hx-target="#validate-result" hx-include="#yaml"
+                hx-confirm="Apply the configuration to all targets?">Apply</button>
+        <button type="button" class="secondary"
+                hx-get="/ui/load-current" hx-target="#yaml" hx-swap="innerHTML">Load current</button>
+      </div>
+    </form>
+  </div>
+  <div id="validate-result"></div>
+</section>
+
+<section id="history">
+  <h2>Deploy history</h2>
+  <div hx-get="/ui/history" hx-trigger="load, every 10s" hx-swap="innerHTML"><em>loading…</em></div>
+</section>
+
+</main>
+</body>
+</html>

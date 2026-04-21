@@ -1,0 +1,121 @@
+# Esempio di deployment RCA
+# Stack: Postgres + API Node.js + web statica Nginx
+#
+# Questo file è volutamente compatibile con Fase 1 (nessuna feature avanzata).
+# Esempi con Fase 2/3 si trovano nelle fixture dei test.
+
+api_version: rca/v1
+project: demo-stack
+description: |
+  Stack di esempio per il prototipo RCA.
+  Un'API Node con backing DB Postgres, con un frontend statico servito da Nginx.
+
+hosts:
+  host1:
+    type: linux
+    address: 192.168.1.10
+    user: deploy
+    tags: [dev]
+
+components:
+
+  db:
+    description: Postgres 16
+    source:
+      type: docker
+      image: postgres
+      tag: "16"
+    run:
+      type: docker
+      container_name: demo-db
+      ports:
+        - "5432:5432"
+      volumes:
+        - "demo-db-data:/var/lib/postgresql/data"
+      env:
+        POSTGRES_PASSWORD: "changeme"
+        POSTGRES_DB: demoapp
+        POSTGRES_USER: demoapp
+      restart: unless-stopped
+    healthcheck:
+      type: tcp
+      port: 5432
+      interval: 10s
+      start_period: 20s
+      retries: 3
+    deploy_mode: cold
+
+  api:
+    description: API Node.js
+    source:
+      type: git
+      repo: https://github.com/example/demo-api.git
+      ref: main
+    build:
+      - command: npm ci
+        timeout: 300s
+      - command: npm run build
+        timeout: 300s
+    config:
+      templates:
+        - source: .env.j2
+          dest: /opt/demo-api/.env
+          mode: 0640
+      vars:
+        DB_HOST: "{{ hosts['host1'].address }}"
+        DB_PORT: 5432
+        DB_NAME: demoapp
+        DB_USER: demoapp
+        DB_PASSWORD: changeme    # Fase 1: chiaro; Fase 2: {{ vault://... }}
+        LOG_LEVEL: info
+        PORT: 3000
+    run:
+      type: systemd
+      unit_name: demo-api
+      command: /usr/bin/node /opt/demo-api/dist/server.js
+      working_directory: /opt/demo-api
+      user: deploy
+      env:
+        NODE_ENV: production
+      restart: on-failure
+      restart_sec: 5
+    healthcheck:
+      type: http
+      url: http://localhost:3000/health
+      expect_status: 200
+      interval: 10s
+      start_period: 15s
+      retries: 3
+    depends_on: [db]
+    deploy_mode: cold
+
+  web:
+    description: Frontend statico servito da Nginx
+    source:
+      type: docker
+      image: nginx
+      tag: "1.27-alpine"
+    config:
+      templates:
+        - source: nginx.conf.j2       # ipotetico, non presente nella demo
+          dest: /etc/nginx/conf.d/default.conf
+      vars:
+        API_UPSTREAM: "http://{{ hosts['host1'].address }}:3000"
+    run:
+      type: docker
+      container_name: demo-web
+      ports:
+        - "80:80"
+      restart: unless-stopped
+    healthcheck:
+      type: http
+      url: http://localhost/
+      expect_status: 200
+      interval: 10s
+    depends_on: [api]
+    deploy_mode: cold
+
+deployment:
+  - host: host1
+    components: [db, api, web]
+    strategy: sequential

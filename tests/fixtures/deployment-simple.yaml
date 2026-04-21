@@ -1,0 +1,38 @@
+api_version: rca/v1
+project: test-simple
+description: Single nginx component for smoke tests.
+
+hosts:
+  host1:
+    type: linux
+    address: 127.0.0.1
+    user: deploy
+    tags: [test]
+
+components:
+  web:
+    description: Nginx on port 18080
+    source:
+      type: docker
+      image: nginx
+      tag: "1.27-alpine"
+      pull_policy: if_not_present
+    run:
+      type: docker
+      container_name: rca-test-web
+      ports:
+        - "18080:80"
+      restart: unless-stopped
+    healthcheck:
+      type: http
+      url: http://127.0.0.1:18080/
+      expect_status: 200
+      interval: 2s
+      start_period: 3s
+      retries: 10
+    deploy_mode: cold
+
+deployment:
+  - host: host1
+    components: [web]
+    strategy: sequential

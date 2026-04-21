@@ -1,0 +1,18 @@
+api_version: rca/v1
+project: bad-ref
+
+hosts:
+  host1:
+    type: linux
+    address: 127.0.0.1
+    user: deploy
+
+components:
+  a:
+    source: {type: docker, image: nginx, tag: "1.27-alpine"}
+    run: {type: docker, container_name: rca-a}
+    depends_on: [does-not-exist]
+
+deployment:
+  - host: missing-host
+    components: [a, also-missing]
