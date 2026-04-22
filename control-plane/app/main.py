@@ -18,15 +18,15 @@ from .api.ui import router as ui_router
 
 
 logging.basicConfig(
-    level=os.environ.get("RCA_LOG_LEVEL", "INFO"),
+    level=os.environ.get("MAESTRO_LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s %(message)s",
 )
-log = logging.getLogger("rca.main")
+log = logging.getLogger("maestro.main")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    db_path = os.environ.get("RCA_DB", "control-plane.db")
+    db_path = os.environ.get("MAESTRO_DB", "control-plane.db")
     storage = Storage(db_path)
     await storage.init()
     hub = Hub()
@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="RCA Control Plane", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Maestro Control Plane", version="0.1.0", lifespan=lifespan)
     app.include_router(api_router)
     app.include_router(ui_router)
 
@@ -54,7 +54,7 @@ def create_app() -> FastAPI:
         host_id: str = Query(...),
         token: str = Query(""),
     ):
-        expected = os.environ.get("RCA_DAEMON_TOKEN") or None
+        expected = os.environ.get("MAESTRO_DAEMON_TOKEN") or None
         await app.state.hub.handle_daemon_ws(
             ws, host_id=host_id, token=token or None,
             expected_token=expected,
@@ -71,7 +71,7 @@ def create_app() -> FastAPI:
             idx = web_dir / "index.html"
             if idx.is_file():
                 return FileResponse(str(idx))
-            return PlainTextResponse("RCA control plane — web UI missing")
+            return PlainTextResponse("Maestro control plane — web UI missing")
 
     return app
 

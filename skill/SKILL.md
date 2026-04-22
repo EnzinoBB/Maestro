@@ -1,19 +1,19 @@
 ---
-name: rca-orchestrator
+name: maestro-orchestrator
 description: >
-  Pilota il sistema Remote Control Agent (RCA) per deployare, monitorare e
+  Pilota il sistema Maestro per deployare, monitorare e
   gestire componenti applicativi su macchine Linux e, dalla Fase 3, cluster
   Kubernetes. Usala quando l'utente chiede di modificare configurazioni di
   deployment, lanciare/fermare/riavviare componenti, verificare lo stato di
   deploy, leggere log o metriche, eseguire test di componenti, effettuare
   rollback. La skill si appoggia al server MCP esposto dal control plane
-  RCA.
+  Maestro.
 ---
 
-# RCA Orchestrator Skill
+# Maestro Orchestrator Skill
 
 Questa skill guida un agente AI nell'uso del server MCP del control plane
-RCA. È pensata per ridurre il consumo di token esponendo un modello mentale
+Maestro. È pensata per ridurre il consumo di token esponendo un modello mentale
 chiaro e un flusso operativo standardizzato.
 
 > Nota: questo è lo **skeleton** prodotto in Fase 0. Sarà arricchito in
@@ -22,7 +22,7 @@ chiaro e un flusso operativo standardizzato.
 
 ## Modello mentale
 
-Il sistema RCA gestisce progetti descritti da un file `deployment.yaml` che
+Il sistema Maestro gestisce progetti descritti da un file `deployment.yaml` che
 enumera **hosts** (dove deployare) e **components** (cosa deployare), con
 un piano di assegnazione `deployment[]`. Ogni componente ha un `deploy_mode`
 (`cold`, `hot`, `blue_green`) e si accompagna a `healthcheck` e, opzionalmente,
@@ -32,7 +32,7 @@ Tre attori:
 
 1. **Control plane** (Python): legge lo YAML, ordina le operazioni, parla
    ai daemon.
-2. **Daemon** (`rcad`, Go): un processo residente su ogni host che conosce
+2. **Daemon** (`maestrod`, Go): un processo residente su ogni host che conosce
    lo stato locale e esegue le azioni richieste.
 3. **Agente (tu)**: operi via server MCP del control plane.
 

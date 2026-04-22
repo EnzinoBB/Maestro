@@ -1,4 +1,4 @@
-# Remote Control Agent (RCA)
+# Maestro
 
 Orchestratore di deployment multi-host guidato da un agente AI, pensato per essere
 più semplice di Ansible sui casi comuni e per ridurre al minimo il consumo di
@@ -24,7 +24,7 @@ report completo; i piani Fase 2/3 sono in `docs/phase-2-beta.md` e
 ### 1. Build
 
 ```bash
-make build-linux          # produce dist/rcad-linux-amd64
+make build-linux          # produce dist/maestrod-linux-amd64
 make build-control-plane  # sanity check del CP Python
 ```
 
@@ -48,7 +48,7 @@ docker compose up -d
 # UI: http://localhost:8000
 ```
 
-> `docker-compose.yml`, `credentials.yaml` e `/etc/rcad/config.yaml` contengono
+> `docker-compose.yml`, `credentials.yaml` e `/etc/maestrod/config.yaml` contengono
 > segreti e sono `.gitignore`-d. Copia i file `*.example` in `scripts/` o nella
 > root del progetto e sostituisci i placeholder `CHANGE_ME` con i tuoi valori.
 
@@ -57,12 +57,12 @@ docker compose up -d
 Su ciascun host Linux target:
 
 ```bash
-scp dist/rcad-linux-amd64 user@host:/tmp/rcad
+scp dist/maestrod-linux-amd64 user@host:/tmp/maestrod
 scp scripts/install-daemon.sh user@host:/tmp/
 ssh user@host "sudo /tmp/install-daemon.sh \
   --endpoint ws://<CP_HOST>:8000/ws/daemon \
   --host-id api-server \
-  --binary /tmp/rcad"
+  --binary /tmp/maestrod"
 ```
 
 ### 4. Deploya
@@ -86,8 +86,8 @@ curl -X POST http://<CP_HOST>:8000/api/config/apply \
 │   ├── app/               Codice applicativo
 │   ├── tests/             Test unitari e d'integrazione
 │   └── web/               UI web per l'utente (HTMX)
-├── daemon/                Agente host in Go (rcad)
-│   ├── cmd/rcad/          Entry point
+├── daemon/                Agente host in Go (maestrod)
+│   ├── cmd/maestrod/      Entry point
 │   ├── internal/          Pacchetti interni
 │   └── test/integration/  Test d'integrazione del daemon
 ├── tests/                 Test end-to-end cross-componente

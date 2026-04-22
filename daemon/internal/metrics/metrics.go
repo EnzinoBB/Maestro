@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/rca-project/rca-daemon/internal/orchestrator"
-	"github.com/rca-project/rca-daemon/internal/ws"
+	"github.com/maestro-project/maestro-daemon/internal/orchestrator"
+	"github.com/maestro-project/maestro-daemon/internal/ws"
 )
 
 // Run publishes metrics via the orchestrator every `interval` until ctx is done.

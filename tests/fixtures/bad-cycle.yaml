@@ -1,4 +1,4 @@
-api_version: rca/v1
+api_version: maestro/v1
 project: bad-cycle
 
 hosts:
@@ -10,11 +10,11 @@ hosts:
 components:
   a:
     source: {type: docker, image: nginx, tag: "1.27-alpine"}
-    run: {type: docker, container_name: rca-a}
+    run: {type: docker, container_name: maestro-a}
     depends_on: [b]
   b:
     source: {type: docker, image: nginx, tag: "1.27-alpine"}
-    run: {type: docker, container_name: rca-b}
+    run: {type: docker, container_name: maestro-b}
     depends_on: [a]
 
 deployment:

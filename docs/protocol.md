@@ -1,7 +1,7 @@
 # Protocollo Control Plane ↔ Daemon
 
 Questo documento descrive il protocollo di comunicazione fra il control plane
-e i daemon `rcad`. Il trasporto è WebSocket su TLS (in produzione). Il formato
+e i daemon `maestrod`. Il trasporto è WebSocket su TLS (in produzione). Il formato
 dei messaggi è JSON.
 
 ## 1. Stabilimento della connessione
@@ -13,9 +13,9 @@ Il daemon apre una connessione WebSocket verso l'endpoint del control plane
 
 ```
 Authorization: Bearer <daemon_token>
-X-RCA-Daemon-Id: <id_univoco_del_daemon>
-X-RCA-Daemon-Version: <version_string>
-X-RCA-Host-Info: <base64(json con hostname, os, arch, kernel)>
+X-Maestro-Daemon-Id: <id_univoco_del_daemon>
+X-Maestro-Daemon-Version: <version_string>
+X-Maestro-Host-Info: <base64(json con hostname, os, arch, kernel)>
 ```
 
 Il control plane valida il token, registra il daemon nell'hub e risponde

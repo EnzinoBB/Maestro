@@ -41,12 +41,12 @@ func (d *DockerRunner) bin() string {
 	return d.Bin
 }
 
-// containerName returns the desired container name, falling back to rca-<id>.
+// containerName returns the desired container name, falling back to maestro-<id>.
 func containerName(d *ComponentDeploy) string {
 	if n, ok := d.Run["container_name"].(string); ok && n != "" {
 		return n
 	}
-	return "rca-" + d.ComponentID
+	return "maestro-" + d.ComponentID
 }
 
 func (d *DockerRunner) inspect(ctx context.Context, name string) (map[string]any, error) {
@@ -134,8 +134,8 @@ func (d *DockerRunner) buildArgs(dp *ComponentDeploy, name, image string) []stri
 		}
 	}
 	// label for traceability
-	args = append(args, "--label", "rca.component_id="+dp.ComponentID)
-	args = append(args, "--label", "rca.component_hash="+dp.TargetHash)
+	args = append(args, "--label", "maestro.component_id="+dp.ComponentID)
+	args = append(args, "--label", "maestro.component_hash="+dp.TargetHash)
 
 	args = append(args, image)
 

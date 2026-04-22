@@ -10,21 +10,21 @@ Lo schema è versionato. Il campo radice `api_version` è obbligatorio e permett
 evoluzione senza rompere compatibilità.
 
 ```yaml
-api_version: rca/v1
+api_version: maestro/v1
 ```
 
 Valori validi:
-- `rca/v1` — introdotto in Fase 1
-- `rca/v1beta` — campi di Fase 2
-- `rca/v1ga` — campi di Fase 3 (K8s, advanced rollout)
+- `maestro/v1` — introdotto in Fase 1
+- `maestro/v1beta` — campi di Fase 2
+- `maestro/v1ga` — campi di Fase 3 (K8s, advanced rollout)
 
-Un file `rca/v1` deve rimanere accettabile anche nelle fasi successive (solo
+Un file `maestro/v1` deve rimanere accettabile anche nelle fasi successive (solo
 additiva).
 
 ## Struttura di primo livello
 
 ```yaml
-api_version: rca/v1
+api_version: maestro/v1
 project: <string>              # Nome del progetto (obbligatorio)
 description: <string>          # Opzionale
 
@@ -343,7 +343,7 @@ che include path del campo e motivo.
 ## Esempio completo (minimale)
 
 ```yaml
-api_version: rca/v1
+api_version: maestro/v1
 project: demo-stack
 description: Stack di esempio con API + DB
 

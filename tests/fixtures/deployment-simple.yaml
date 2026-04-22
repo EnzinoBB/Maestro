@@ -1,4 +1,4 @@
-api_version: rca/v1
+api_version: maestro/v1
 project: test-simple
 description: Single nginx component for smoke tests.
 
@@ -19,7 +19,7 @@ components:
       pull_policy: if_not_present
     run:
       type: docker
-      container_name: rca-test-web
+      container_name: maestro-test-web
       ports:
         - "18080:80"
       restart: unless-stopped

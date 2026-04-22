@@ -1,7 +1,7 @@
 # Fase 1 — Prototipo
 
 > **Istruzioni per l'agente che legge questo documento.**
-> Sei incaricato di sviluppare la Fase 1 di Remote Control Agent. Prima di
+> Sei incaricato di sviluppare la Fase 1 di Maestro. Prima di
 > scrivere codice, leggi:
 > - `README.md`
 > - `docs/architecture.md` (architettura complessiva — obbligatorio)
@@ -20,7 +20,7 @@
 Consegnare uno **slice verticale funzionante**: un utente deve poter
 modificare un `deployment.yaml`, caricarlo nella UI del control plane,
 cliccare "Deploy" e vedere un componente Docker reale avviato su un host
-Linux su cui è in esecuzione `rcad`. Lo stesso risultato deve essere
+Linux su cui è in esecuzione `maestrod`. Lo stesso risultato deve essere
 ottenibile via server MCP.
 
 Questa fase **non** include: Git-sync automatico, test framework per i
@@ -42,7 +42,7 @@ componenti, hot deploy, Kubernetes, canary, vault di produzione, UI ricca.
 
 Dal `yaml-schema.md` implementare:
 
-- `api_version: rca/v1` obbligatorio.
+- `api_version: maestro/v1` obbligatorio.
 - `project`, `description`.
 - `hosts.<id>` con `type: linux`, `address`, `user`, `tags`.
 - `components.<id>` con:
@@ -95,12 +95,12 @@ A2. Nel `control-plane/`, inizializza un progetto Python con `pyproject.toml`
     `pytest`, `pytest-asyncio`, `httpx`, `mcp` (Model Context Protocol SDK)).
 
 A3. Nel `daemon/`, inizializza un modulo Go (`go mod init
-    github.com/<org>/rca-daemon`). Dipendenze iniziali: `github.com/gorilla/websocket`,
+    github.com/<org>/maestro-daemon`). Dipendenze iniziali: `github.com/gorilla/websocket`,
     `modernc.org/sqlite` (o `mattn/go-sqlite3`), `github.com/spf13/cobra`,
     `github.com/stretchr/testify`, `github.com/go-playground/validator/v10`.
 
 A4. Crea un `Makefile` root con target:
-    - `make build-daemon` — compila il binario `rcad` in `dist/rcad`
+    - `make build-daemon` — compila il binario `maestrod` in `dist/maestrod`
     - `make build-control-plane` — sanity check Python (ruff + mypy + pytest)
     - `make test-unit` — esegue test unitari di entrambi
     - `make test-integration` — esegue test d'integrazione
@@ -111,7 +111,7 @@ A5. Configura linting minimo: `ruff` per Python, `go vet` + `golangci-lint`
     per Go. Aggiungi un pre-commit hook opzionale.
 
 **Test gruppo A:**
-- `make build-daemon` produce un binario eseguibile `dist/rcad` che stampa
+- `make build-daemon` produce un binario eseguibile `dist/maestrod` che stampa
   `--version` correttamente.
 - `cd control-plane && pytest --collect-only` non riporta errori di import.
 - `cd daemon && go vet ./...` passa.
@@ -152,8 +152,8 @@ B4. In `control-plane/app/config/renderer.py`:
 
 ### Gruppo C — Daemon: struttura, store e WS client
 
-C1. `daemon/cmd/rcad/main.go`:
-    - Flag: `--config /etc/rcad/config.yaml`, `--version`, `--debug`.
+C1. `daemon/cmd/maestrod/main.go`:
+    - Flag: `--config /etc/maestrod/config.yaml`, `--version`, `--debug`.
     - Legge config (endpoint control plane, token, host_id, working_dir).
     - Avvia client WS, state store, metrics collector.
 
@@ -194,8 +194,8 @@ D2. `daemon/internal/runner/systemd.go`:
     - Genera unit file da template.
     - Usa `systemctl` via `os/exec` (niente dbus in Fase 1, ma prepara
       l'interfaccia per sostituirlo).
-    - Directory di deploy: `/opt/rca/<component_id>/`.
-    - Unit file in `/etc/systemd/system/rca-<component_id>.service`.
+    - Directory di deploy: `/opt/maestro/<component_id>/`.
+    - Unit file in `/etc/systemd/system/maestro-<component_id>.service`.
 
 D3. `daemon/internal/runner/docker.go`:
     - Usa il client Docker ufficiale Go (`docker/docker`).
@@ -307,9 +307,9 @@ F4. `skill/SKILL.md`: skill skeleton documentando i verbi MCP e il flusso
 ### Gruppo G — Installer e packaging minimo
 
 G1. `scripts/install-daemon.sh`:
-    - Scarica il binario `rcad` dal percorso indicato (o da un path locale).
-    - Crea `/etc/rcad/config.yaml` da template.
-    - Installa e avvia `rca-daemon.service` systemd.
+    - Scarica il binario `maestrod` dal percorso indicato (o da un path locale).
+    - Crea `/etc/maestrod/config.yaml` da template.
+    - Installa e avvia `maestro-daemon.service` systemd.
     - Uso: `sudo ./install-daemon.sh --endpoint wss://cp/ws/daemon --token XXX --host-id api-server`.
 
 G2. `control-plane/Dockerfile` per eseguire il control plane in container.

@@ -14,7 +14,7 @@ from ..ws.protocol import (
 )
 from .diff import compute_diff, Diff, ComponentChange, component_hash
 
-log = logging.getLogger("rca.engine")
+log = logging.getLogger("maestro.engine")
 
 
 @dataclass

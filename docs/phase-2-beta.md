@@ -56,6 +56,8 @@ A1. Estendere i modelli Pydantic in `control-plane/app/config/schema.py`
     - `canary` su `deployment[].strategy`
     - `defaults`
     - `credentials_ref` con risoluzione a vault
+    - `source.type: artifact` con `artifact_id` (vedi Gruppo J)
+    - `self_update: bool` su `ComponentSpec` (vedi Gruppo J)
 
 A2. Assicurarsi che file YAML Fase 1 continuino a essere accettati senza
     modifiche (backward compatibility).
@@ -234,6 +236,8 @@ G1. Aggiungere al server MCP i verbi mancanti:
     - `tail_logs_stream` (se supportato dall'SDK MCP; altrimenti rimane
       non-stream e si documenta)
     - `drift_status`
+    - `upload_artifact`, `update_component`, `remove_component`,
+      `get_host_diagnostics` (vedi Gruppo J)
 
 G2. Aggiornare `skill/SKILL.md` con:
     - Modello mentale del sistema.
@@ -282,6 +286,140 @@ I1. Dockerfile del control plane con build multi-stage.
 I2. Aggiornare `docker-compose.yml` di sviluppo.
 I3. Script `scripts/backup.sh` per backup dello stato del control plane
     (DB + vault).
+
+### Gruppo J — Primitive di lifecycle granulare
+
+Fase 1 consente di applicare un intero `deployment.yaml` ma manca di
+primitive per (a) deployare un componente con un pacchetto che l'agente
+ha già in locale (es. binario compilato sulla sua macchina) senza passare
+da Git; (b) rimuovere un componente in modo idempotente — oggi `to_remove`
+nel diff è skippato per design; (c) ispezionare lo stato di un host in un
+solo round-trip. Fase 2 colma i tre gap.
+
+#### J1 — Artifact upload + `source.type: artifact`
+
+CP-side:
+- Endpoint REST:
+  - `POST /api/artifacts` (multipart o JSON con `content_b64`): upload di
+    un file, ritorna `{artifact_id, sha256, size, created_at}`.
+  - `GET /api/artifacts` lista, `GET /api/artifacts/{id}` metadata,
+    `DELETE /api/artifacts/{id}`.
+- Storage locale con deduplicazione per sha256 e TTL configurabile
+  (default 24h); metadata su DB.
+- Quando l'orchestrator deve deployare un componente con
+  `source.type: artifact`, include i bytes nel payload `request.deploy`
+  verso il daemon (riusando il sottotipo `inline_tarball` esistente per
+  archivi, o nuovo `binary_executable` per eseguibili singoli).
+
+Schema YAML (vedi `yaml-schema.md`):
+```yaml
+components:
+  api:
+    source:
+      type: artifact
+      artifact_id: "a-7f3a..."   # caricato via upload_artifact
+    run: { ... }
+```
+
+MCP / API:
+- Tool `upload_artifact(path, name?)` → `{artifact_id}`. L'agente fornisce
+  il path di un file sulla sua macchina (o bytes base64); il CP lo
+  registra.
+- Tool `update_component(component_id, source?)` per aggiornare **un solo**
+  componente senza modificare lo YAML canonico:
+  - Se `source` è fornito, sostituisce temporaneamente la source e
+    deploya (utile per "prova questo artifact senza committare la
+    modifica").
+  - Se omesso, riusa la source corrente (equivale a `deploy
+    --component=X`).
+- API REST analoga: `POST /api/components/{id}/update` con body opzionale
+  `{source: {...}}`.
+
+**Caso particolare — self-update del daemon** (non richiede verbo
+dedicato: riusa J1):
+- Il daemon viene dichiarato come componente managed nello YAML dell'host:
+  ```yaml
+  components:
+    maestrod:
+      source: { type: artifact, artifact_id: "..." }
+      run:
+        type: systemd
+        unit_name: maestro-daemon
+        command: /usr/local/bin/maestrod --config /etc/maestrod/config.yaml
+      deploy_mode: blue_green
+      self_update: true
+  ```
+- Con `self_update: true`, il daemon applica la pattern "replace-on-exit":
+  scrive il nuovo binario in `/usr/local/bin/maestrod.new`, spawn di un
+  processo figlio su endpoint alternativo per healthcheck, swap atomico
+  del binario + `systemctl restart maestro-daemon`. Safety: il nuovo
+  processo deve riconnettersi al CP entro timeout (default 60s), altrimenti
+  rollback automatico ripristinando il binario precedente.
+
+Test:
+- `test_artifact_upload.py` (unit): upload + sha256 dedup + TTL + delete.
+- `test_artifact_deploy_test.go` (integration): deploy di un tarball
+  caricato via artifact end-to-end.
+- `test_self_update.py` (e2e): compila localmente un `maestrod` con
+  `Version = "0.2.0-test"`, upload, deploy come self-update, verifica
+  version bump post-riconnessione e downtime ≤ 10s.
+
+#### J2 — Rimozione di componenti
+
+Daemon-side:
+- Handler `request.component.remove` con payload
+  `{component_id, keep_volumes?: bool, keep_state?: bool}`.
+- Esecuzione runner-specific:
+  - Docker: `docker rm -f`, rimuovi volumes dichiarati (skip se
+    `keep_volumes`).
+  - Systemd: `systemctl stop + disable`, rimuovi unit file, rimuovi
+    `/opt/maestro/<id>/`.
+- Cancella row dallo state store (salvo `keep_state` per audit).
+- Emette `event.component_removed`.
+
+Orchestrator:
+- Implementare il ramo `to_remove` nel diff (oggi skippato con commento
+  `Fase 1: we don't remove automatically`).
+- `apply_config?prune=true` esegue effettivamente le rimozioni; default
+  `prune=false` mantiene il comportamento attuale.
+- MCP tool `remove_component(component_id, keep_volumes?)` per rimozione
+  puntuale senza toccare lo YAML.
+
+Test:
+- `test_remove_daemon_test.go`: deploy → remove → verifica container/unit
+  spariti, volumes comportamento corretto con/senza `keep_volumes`.
+- `test_orchestrator_prune.py`: apply con `prune=true` rimuove i
+  componenti non più in YAML.
+
+#### J3 — Host diagnostics
+
+Handler daemon `request.host.diagnostics` ritorna uno snapshot aggregato
+(ottimizzazione token: l'agente ottiene tutto in un round-trip invece di
+chiamare N volte):
+
+```json
+{
+  "host_id": "host1",
+  "os": { "name": "Ubuntu", "version": "24.04", "kernel": "6.8..." },
+  "uptime_sec": 86400,
+  "cpu": { "count": 4, "load_1m": 0.4, "load_5m": 0.3 },
+  "memory_mb": { "total": 8192, "used": 2048, "available": 6144 },
+  "disk": [ { "path": "/", "total_gb": 100, "used_gb": 43 } ],
+  "runtimes": {
+    "docker":  { "active": true, "version": "29.1.3" },
+    "systemd": { "active": true, "version": "255" }
+  },
+  "daemon": { "version": "0.2.0", "uptime_sec": 3600, "reconnects": 0 }
+}
+```
+
+MCP tool `get_host_diagnostics(host_id)`.
+
+Test:
+- `test_diagnostics_daemon_test.go`: mock dei comandi di sistema e
+  verifica struttura output.
+- `test_mcp_diagnostics.py`: round-trip MCP, payload < 2 KB per host con
+  ≤ 5 componenti.
 
 ## 4. Fixture e dati di test
 
@@ -364,6 +502,41 @@ make test-ui          # nuovo target Fase 2, esegue Playwright
 ```
 
 Tutti green.
+
+### Accettazione 11 — Artifact upload + update granulare
+
+- L'agente esegue `upload_artifact` con un tarball locale → riceve
+  `artifact_id`.
+- `update_component` di un componente esistente con
+  `source: {type: artifact, artifact_id: "..."}` → il componente è
+  ridistribuito con i bytes dell'artifact, gli altri componenti NON
+  vengono toccati.
+- Dopo TTL (con TTL ridotto per test) l'artifact è rimosso, nuovi
+  deploy con lo stesso `artifact_id` ritornano errore `not_found` chiaro.
+
+### Accettazione 12 — Self-update del daemon
+
+- Partendo da `maestrod 0.1.0`, compilare localmente `maestrod 0.2.0-test`
+  (dummy version bump), caricarlo via `upload_artifact`.
+- Deploy con `self_update: true` come componente managed dell'host.
+- Verifica: dopo lo swap il daemon risulta `0.2.0-test` su `/api/hosts`,
+  la disconnessione osservata dal CP dura ≤ 10 s, nessuna perdita di
+  stato dei componenti managed dal daemon.
+- Fault injection: se il nuovo binario non si riconnette entro 60 s, il
+  daemon torna automaticamente a `0.1.0` (rollback).
+
+### Accettazione 13 — Remove componente
+
+- Deploy di un componente → `remove_component` → verifica container/unit
+  spariti su host e riga rimossa dallo state store.
+- Modificare il YAML rimuovendo un componente, `apply_config?prune=true`
+  → componente rimosso. Stesso flow con `prune=false` → componente
+  lasciato in piedi (backward compat con Fase 1).
+
+### Accettazione 14 — Diagnostics
+
+- `get_host_diagnostics(host_id)` per entrambi gli host → JSON completo
+  con tutti i campi del §J3, dimensione ≤ 2 KB per host, latenza ≤ 500 ms.
 
 ## 6. Documenti da produrre alla fine
 

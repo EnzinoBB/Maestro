@@ -1,4 +1,4 @@
-# Remote Control Agent — root Makefile.
+# Maestro — root Makefile.
 # Fase 1 implementation.
 
 .PHONY: help build build-daemon build-linux build-control-plane \
@@ -7,8 +7,8 @@
 help:
 	@echo "Available targets:"
 	@echo "  make build                - build daemon + CP sanity check"
-	@echo "  make build-daemon         - native go build of rcad (dist/rcad)"
-	@echo "  make build-linux          - cross-compile rcad for linux/amd64"
+	@echo "  make build-daemon         - native go build of maestrod (dist/maestrod)"
+	@echo "  make build-linux          - cross-compile maestrod for linux/amd64"
 	@echo "  make build-control-plane  - python compile + ruff checks"
 	@echo "  make test-unit            - unit tests (python + go)"
 	@echo "  make test-integration     - integration tests (go)"
@@ -19,11 +19,11 @@ help:
 build: build-linux build-control-plane
 
 build-daemon:
-	cd daemon && CGO_ENABLED=0 go build -o ../dist/rcad ./cmd/rcad
+	cd daemon && CGO_ENABLED=0 go build -o ../dist/maestrod ./cmd/maestrod
 
 build-linux:
 	cd daemon && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" \
-		-o ../dist/rcad-linux-amd64 ./cmd/rcad
+		-o ../dist/maestrod-linux-amd64 ./cmd/maestrod
 
 build-control-plane:
 	cd control-plane && python -m compileall app -q

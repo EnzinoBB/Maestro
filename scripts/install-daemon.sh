@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# install-daemon.sh — install rcad as a systemd service on a Linux host.
+# install-daemon.sh — install maestrod as a systemd service on a Linux host.
 #
 # Usage:
 #   sudo ./install-daemon.sh \
 #     --endpoint ws://cp.example:8000/ws/daemon \
 #     --host-id api-server \
 #     --token SHARED_TOKEN \
-#     [--binary ./dist/rcad-linux-amd64] \
+#     [--binary ./dist/maestrod-linux-amd64] \
 #     [--insecure]
 set -euo pipefail
 
@@ -39,11 +39,11 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-BIN_DST="/usr/local/bin/rcad"
-CFG_DIR="/etc/rcad"
+BIN_DST="/usr/local/bin/maestrod"
+CFG_DIR="/etc/maestrod"
 CFG_FILE="$CFG_DIR/config.yaml"
-UNIT_FILE="/etc/systemd/system/rca-daemon.service"
-WORK_DIR="/var/lib/rcad"
+UNIT_FILE="/etc/systemd/system/maestro-daemon.service"
+WORK_DIR="/var/lib/maestrod"
 
 if [[ -n "$BINARY" ]]; then
   install -o root -g root -m 0755 "$BINARY" "$BIN_DST"
@@ -70,13 +70,13 @@ chmod 0640 "$CFG_FILE"
 
 cat > "$UNIT_FILE" <<'EOF'
 [Unit]
-Description=RCA daemon (rcad)
+Description=Maestro daemon (maestrod)
 After=network-online.target docker.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/rcad --config /etc/rcad/config.yaml
+ExecStart=/usr/local/bin/maestrod --config /etc/maestrod/config.yaml
 Restart=always
 RestartSec=5
 User=root
@@ -88,7 +88,7 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now rca-daemon.service
+systemctl enable --now maestro-daemon.service
 sleep 1
-systemctl --no-pager status rca-daemon.service | head -20 || true
-echo "rcad installed and started."
+systemctl --no-pager status maestro-daemon.service | head -20 || true
+echo "maestrod installed and started."
