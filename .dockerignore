@@ -1,0 +1,42 @@
+# Git metadata and worktrees
+.git
+.worktrees
+
+# Build artifacts (regenerated inside the builder stage)
+dist
+
+# Python caches
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+
+# Virtual envs
+**/.venv
+**/venv
+**/env
+
+# Node (if ever used)
+**/node_modules
+
+# Editor / IDE
+**/.idea
+**/.vscode
+**/*.swp
+**/*.swo
+
+# Logs
+*.log
+
+# Local configuration / secrets — docker-compose.yml may have real tokens
+docker-compose.yml
+credentials.yaml
+daemon-config.yaml
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db

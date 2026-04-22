@@ -21,7 +21,10 @@ RUN set -eu; \
 FROM python:3.12-slim
 
 WORKDIR /app
-COPY control-plane/pyproject.toml ./
+# NOTE: this list must stay in sync with control-plane/pyproject.toml
+# [project.dependencies]. A proper "pip install ." would be cleaner but is
+# blocked by readme = "../README.md" in pyproject (outside build context);
+# revisit as part of Phase 3 packaging hardening.
 RUN pip install --no-cache-dir fastapi 'uvicorn[standard]' pydantic pyyaml jinja2 \
     sqlalchemy aiosqlite websockets httpx click mcp python-multipart
 
