@@ -138,7 +138,8 @@ async def ui_diff(request: Request):
     engine: Engine = request.app.state.engine
     d = await engine.diff(spec)
     def _render(label, items):
-        if not items: return ""
+        if not items:
+            return ""
         body = "".join(
             f"<li><code>{_esc(c.host_id)}/{_esc(c.component_id)}</code>"
             f" {_esc((c.old_hash or '-')[:10])} → {_esc((c.new_hash or '-')[:10])}</li>"

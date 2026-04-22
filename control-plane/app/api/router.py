@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from typing import Any
-from fastapi import APIRouter, Body, HTTPException, Request, Response
+from fastapi import APIRouter, Body, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from ..config.loader import parse_deployment, LoaderError

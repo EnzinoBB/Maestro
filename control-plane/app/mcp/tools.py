@@ -5,7 +5,6 @@ wraps them. Errors are structured dicts with code + message + suggested_fix.
 """
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from ..config.loader import parse_deployment, LoaderError
