@@ -14,10 +14,11 @@ elif [ -s "$TOKEN_FILE" ]; then
     MAESTRO_DAEMON_TOKEN="$(cat "$TOKEN_FILE")"
     export MAESTRO_DAEMON_TOKEN
 else
+    umask 077
     mkdir -p "$(dirname "$TOKEN_FILE")"
     MAESTRO_DAEMON_TOKEN="$(python -c 'import secrets; print(secrets.token_hex(32))')"
-    umask 077
     printf '%s' "$MAESTRO_DAEMON_TOKEN" > "$TOKEN_FILE"
+    chmod 600 "$TOKEN_FILE"
     export MAESTRO_DAEMON_TOKEN
     cat <<EOF
 ===========================================================
