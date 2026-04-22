@@ -2,7 +2,7 @@
 
 Questa Fase 1 (Prototipo) produce uno **slice verticale** completo: un utente
 carica un `deployment.yaml`, preme "Apply" nella UI (o chiama l'API) e il
-control plane ordina a un daemon `rcad` di deployare un componente Docker
+control plane ordina a un daemon `maestrod` di deployare un componente Docker
 reale su un host Linux. Lo stesso flusso è esposto via MCP-compatible tools.
 
 ## 1. Cosa è stato costruito
@@ -25,7 +25,7 @@ reale su un host Linux. Lo stesso flusso è esposto via MCP-compatible tools.
 
 | Modulo | Responsabilità |
 |--------|----------------|
-| `cmd/rcad/main.go` | Entry point con flag `--config`, `--version`, `--debug` |
+| `cmd/maestrod/main.go` | Entry point con flag `--config`, `--version`, `--debug` |
 | `internal/config/` | Caricamento `config.yaml` (+ env override) |
 | `internal/state/` | Store SQLite (tabelle `components`, `history`) con migrazione |
 | `internal/ws/` | Client WebSocket Gorilla, handshake, reconnect con backoff+jitter, heartbeat 15s |
@@ -40,8 +40,8 @@ reale su un host Linux. Lo stesso flusso è esposto via MCP-compatible tools.
 
 - `Makefile` root con target `build-linux`, `build-control-plane`, `test-unit`, `test-integration`, `test-e2e`, `dev`, `clean`, `lint`.
 - `control-plane/Dockerfile` + `docker-compose.yml` per avviare il CP in container.
-- `scripts/install-daemon.sh` installa `rcad` come unit systemd.
-- `dist/rcad-linux-amd64` prodotto con `make build-linux` (binario ~11 MB, statico, CGO=0).
+- `scripts/install-daemon.sh` installa `maestrod` come unit systemd.
+- `dist/maestrod-linux-amd64` prodotto con `make build-linux` (binario ~11 MB, statico, CGO=0).
 
 ### Skill
 
@@ -82,7 +82,7 @@ IP/hostname sono stati anonimizzati in questo report.
 | # | Criterio | Esito |
 |---|----------|-------|
 | A1 | Bootstrap: CP up + `/api/hosts` popolato | ✅ 2 host online |
-| A2 | Deploy nginx da `deployment-simple.yaml` | ✅ `/18080 → 200`, container `rca-test-web` running |
+| A2 | Deploy nginx da `deployment-simple.yaml` | ✅ `/18080 → 200`, container `maestro-test-web` running |
 | A3 | Idempotenza: re-apply = `unchanged` | ✅ `0 ms`, 0 restart |
 | A4 | Validazione: `bad-cycle.yaml` → errori strutturati con path | ✅ `components` + "dependency cycle" |
 | A5 | MCP round-trip (validate/apply/state/start/stop/restart/logs/idempotency) | ✅ 9/9 step |
@@ -143,12 +143,12 @@ python -m venv .venv && .venv/bin/pip install -e .
 make build-linux
 
 # sulla macchina target (con sudo):
-scp dist/rcad-linux-amd64 user@host:/tmp/
+scp dist/maestrod-linux-amd64 user@host:/tmp/
 scp scripts/install-daemon.sh user@host:/tmp/
 ssh user@host "chmod +x /tmp/install-daemon.sh && sudo /tmp/install-daemon.sh \
   --endpoint ws://<cp-address>:8000/ws/daemon \
   --host-id <host-id> \
-  --binary /tmp/rcad-linux-amd64"
+  --binary /tmp/maestrod-linux-amd64"
 ```
 
 ### Docker compose stack
@@ -156,5 +156,5 @@ ssh user@host "chmod +x /tmp/install-daemon.sh && sudo /tmp/install-daemon.sh \
 ```bash
 docker compose up -d
 # Il CP è su http://localhost:8000
-# Aggiungi un daemon installando rcad su un host Linux.
+# Aggiungi un daemon installando maestrod su un host Linux.
 ```

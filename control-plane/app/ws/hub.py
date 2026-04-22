@@ -13,7 +13,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 
 from .protocol import Message, make_message, T_HELLO, T_PING, T_PONG
 
-log = logging.getLogger("rca.hub")
+log = logging.getLogger("maestro.hub")
 
 
 class DaemonOffline(Exception):

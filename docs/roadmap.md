@@ -32,7 +32,7 @@ token.
   vault avanzato, rollout canary/blue-green, hot deploy.
 
 **Deliverable**: repository eseguibile con `docker compose up` del control
-plane + `rcad` installabile su un host Linux; deployment end-to-end di
+plane + `maestrod` installabile su un host Linux; deployment end-to-end di
 `examples/deployment.yaml` funzionante.
 
 ## Fase 2 — Beta
@@ -60,7 +60,7 @@ multi-componente.
 - High availability del control plane (PostgreSQL, cluster di istanze con
   leader election).
 - mTLS daemon ↔ control plane.
-- CLI `rca` per operazioni da terminale.
+- CLI `maestro` per operazioni da terminale.
 - Pacchettizzazione: Docker image del control plane su registry, .deb/.rpm
   del daemon, chart Helm opzionale.
 - Documentazione utente completa (guida installazione, tutorial, API reference).

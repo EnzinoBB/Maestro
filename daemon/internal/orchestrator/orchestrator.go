@@ -9,9 +9,9 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/rca-project/rca-daemon/internal/runner"
-	"github.com/rca-project/rca-daemon/internal/state"
-	"github.com/rca-project/rca-daemon/internal/ws"
+	"github.com/maestro-project/maestro-daemon/internal/runner"
+	"github.com/maestro-project/maestro-daemon/internal/state"
+	"github.com/maestro-project/maestro-daemon/internal/ws"
 )
 
 // Orchestrator wires the WS client, state store and runners together.
@@ -265,14 +265,14 @@ func containerNameOrDefault(c *state.Component) string {
 	if c.ContainerName != "" {
 		return c.ContainerName
 	}
-	return "rca-" + c.ID
+	return "maestro-" + c.ID
 }
 
 func unitNameOrDefault(c *state.Component) string {
 	if c.UnitName != "" {
 		return c.UnitName
 	}
-	return "rca-" + c.ID + ".service"
+	return "maestro-" + c.ID + ".service"
 }
 
 func (o *Orchestrator) handleStart(ctx context.Context, msg ws.Message) (string, any, error) {

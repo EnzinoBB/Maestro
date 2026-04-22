@@ -1,4 +1,4 @@
-api_version: rca/v1
+api_version: maestro/v1
 project: test-multi
 description: Nginx + Redis.
 
@@ -16,7 +16,7 @@ components:
       tag: "7-alpine"
     run:
       type: docker
-      container_name: rca-test-cache
+      container_name: maestro-test-cache
       ports: ["16379:6379"]
       restart: unless-stopped
     healthcheck:
@@ -34,7 +34,7 @@ components:
       tag: "1.27-alpine"
     run:
       type: docker
-      container_name: rca-test-web
+      container_name: maestro-test-web
       ports: ["18081:80"]
       restart: unless-stopped
     healthcheck:

@@ -1,4 +1,4 @@
-# Remote Control Agent (RCA)
+# Maestro
 
 Orchestratore di deployment multi-host guidato da un agente AI, pensato per essere
 più semplice di Ansible sui casi comuni e per ridurre al minimo il consumo di
@@ -21,60 +21,78 @@ report completo; i piani Fase 2/3 sono in `docs/phase-2-beta.md` e
 
 ## Quick start
 
-### 1. Build
+### 1. Avvia il control plane (una macchina)
 
 ```bash
-make build-linux          # produce dist/rcad-linux-amd64
-make build-control-plane  # sanity check del CP Python
+curl -fsSL https://github.com/EnzinoBB/Maestro/releases/latest/download/install-cp.sh \
+  | sudo bash
 ```
 
-### 2. Avvia il control plane
+Se il CP sta dietro un reverse proxy (nginx/Caddy/traefik con TLS), imposta
+`MAESTRO_PUBLIC_URL=https://tuo-dominio` nell'ambiente del container: è
+usato per comporre correttamente l'URL pubblico negli script installer
+serviti da `/install-daemon.sh`.
 
-Locale (per sviluppo):
+L'installer verifica/installa Docker, avvia il container, attende l'healthcheck.
+Recupera il token generato al primo avvio:
+
+```bash
+docker compose -f /opt/maestro-cp/docker-compose.yml \
+  exec control-plane cat /data/daemon-token
+```
+
+(Oppure dai log del primo avvio:
+`docker compose -f /opt/maestro-cp/docker-compose.yml logs control-plane | grep -A1 "GENERATED MAESTRO DAEMON TOKEN"`.)
+
+UI: `http://<cp-host>:8000`.
+
+### 2. Installa un daemon (su ciascun host target)
+
+Se il CP ha un dominio raggiungibile dall'host target:
+
+```bash
+curl -fsSL https://<cp-host>/install-daemon.sh | sudo bash -s -- \
+  --host-id api-01 --token <TOKEN>
+```
+
+Oppure da GitHub (con `--cp-url` esplicito):
+
+```bash
+curl -fsSL https://github.com/EnzinoBB/Maestro/releases/latest/download/install-daemon.sh \
+  | sudo bash -s -- --cp-url https://<cp-host> --host-id api-01 --token <TOKEN>
+```
+
+Supportato: Linux x86_64/arm64 (systemd), macOS x86_64/arm64 (launchd).
+
+Il daemon scarica il binario dal CP (fallback GitHub), verifica lo SHA256,
+installa il service systemd/launchd e si connette al CP.
+
+### 3. Deploya
+
+Apri la UI, incolla un `deployment.yaml` (vedi `examples/deployment.yaml`),
+premi **Validate**, **Diff**, poi **Apply**. Oppure via API:
+
+```bash
+curl -X POST http://<cp-host>:8000/api/config/apply \
+  -H 'content-type: text/yaml' \
+  --data-binary @examples/deployment.yaml
+```
+
+### Per contributori — build da sorgente
+
+```bash
+make build-all              # cross-compile maestrod (linux+darwin × amd64+arm64)
+make build-image            # build locale dell'immagine CP
+make build-control-plane    # sanity check del CP Python
+```
+
+Per lo sviluppo locale del CP senza Docker:
 
 ```bash
 cd control-plane
 python -m venv .venv
-.venv/bin/pip install fastapi 'uvicorn[standard]' pydantic pyyaml jinja2 \
-    sqlalchemy aiosqlite websockets httpx click mcp
-.venv/bin/uvicorn app.main:app --port 8000
-```
-
-Oppure via container:
-
-```bash
-cp docker-compose.example.yml docker-compose.yml    # edit secrets inside
-docker compose up -d
-# UI: http://localhost:8000
-```
-
-> `docker-compose.yml`, `credentials.yaml` e `/etc/rcad/config.yaml` contengono
-> segreti e sono `.gitignore`-d. Copia i file `*.example` in `scripts/` o nella
-> root del progetto e sostituisci i placeholder `CHANGE_ME` con i tuoi valori.
-
-### 3. Installa un daemon
-
-Su ciascun host Linux target:
-
-```bash
-scp dist/rcad-linux-amd64 user@host:/tmp/rcad
-scp scripts/install-daemon.sh user@host:/tmp/
-ssh user@host "sudo /tmp/install-daemon.sh \
-  --endpoint ws://<CP_HOST>:8000/ws/daemon \
-  --host-id api-server \
-  --binary /tmp/rcad"
-```
-
-### 4. Deploya
-
-Apri la UI (`http://<CP_HOST>:8000`), incolla un `deployment.yaml`
-(vedi `examples/deployment.yaml`), premi **Validate**, **Diff**, poi
-**Apply**. Oppure via API:
-
-```bash
-curl -X POST http://<CP_HOST>:8000/api/config/apply \
-  -H 'content-type: text/yaml' \
-  --data-binary @examples/deployment.yaml
+.venv/bin/pip install -e '.[dev]'
+.venv/bin/uvicorn app.main:app --port 8000 --reload
 ```
 
 ## Struttura del repository
@@ -86,8 +104,8 @@ curl -X POST http://<CP_HOST>:8000/api/config/apply \
 │   ├── app/               Codice applicativo
 │   ├── tests/             Test unitari e d'integrazione
 │   └── web/               UI web per l'utente (HTMX)
-├── daemon/                Agente host in Go (rcad)
-│   ├── cmd/rcad/          Entry point
+├── daemon/                Agente host in Go (maestrod)
+│   ├── cmd/maestrod/      Entry point
 │   ├── internal/          Pacchetti interni
 │   └── test/integration/  Test d'integrazione del daemon
 ├── tests/                 Test end-to-end cross-componente

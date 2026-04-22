@@ -1,13 +1,13 @@
-# Esempio di deployment RCA
+# Esempio di deployment Maestro
 # Stack: Postgres + API Node.js + web statica Nginx
 #
 # Questo file è volutamente compatibile con Fase 1 (nessuna feature avanzata).
 # Esempi con Fase 2/3 si trovano nelle fixture dei test.
 
-api_version: rca/v1
+api_version: maestro/v1
 project: demo-stack
 description: |
-  Stack di esempio per il prototipo RCA.
+  Stack di esempio per il prototipo Maestro.
   Un'API Node con backing DB Postgres, con un frontend statico servito da Nginx.
 
 hosts:

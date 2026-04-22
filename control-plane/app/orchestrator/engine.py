@@ -12,9 +12,9 @@ from ..ws.protocol import (
     T_REQ_STATE_GET, T_REQ_DEPLOY, T_REQ_START, T_REQ_STOP, T_REQ_RESTART,
     T_REQ_LOGS_TAIL, T_REQ_HEALTH,
 )
-from .diff import compute_diff, Diff, ComponentChange, component_hash
+from .diff import compute_diff, Diff
 
-log = logging.getLogger("rca.engine")
+log = logging.getLogger("maestro.engine")
 
 
 @dataclass
@@ -83,7 +83,6 @@ def _target_bindings(spec: DeploymentSpec) -> list[tuple[str, str]]:
 
     # host ordering by depends_on_hosts
     bindings = spec.deployment
-    host_in: dict[str, set[str]] = {b.host: set(b.depends_on_hosts) for b in bindings}
     ordered_hosts: list[str] = []
     remaining = list(bindings)
     while remaining:

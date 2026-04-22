@@ -37,8 +37,8 @@ func TestRenderUnitMissingCommand(t *testing.T) {
 }
 
 func TestUnitName(t *testing.T) {
-	require.Equal(t, "rca-foo.service", unitName(&ComponentDeploy{ComponentID: "foo", Run: map[string]any{}}))
-	require.Equal(t, "rca-custom.service", unitName(&ComponentDeploy{ComponentID: "foo", Run: map[string]any{"unit_name": "custom"}}))
+	require.Equal(t, "maestro-foo.service", unitName(&ComponentDeploy{ComponentID: "foo", Run: map[string]any{}}))
+	require.Equal(t, "maestro-custom.service", unitName(&ComponentDeploy{ComponentID: "foo", Run: map[string]any{"unit_name": "custom"}}))
 	require.Equal(t, "bar.service", unitName(&ComponentDeploy{ComponentID: "foo", Run: map[string]any{"unit_name": "bar.service"}}))
 }
 

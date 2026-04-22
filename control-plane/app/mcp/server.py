@@ -78,7 +78,7 @@ async def run(base_url: str):
         sys.exit(1)
 
     client = MCPClient(base_url)
-    server = Server("rca")
+    server = Server("maestro")
 
     tools_def = [
         Tool(name="list_hosts", description="List daemons currently connected to the control plane.",

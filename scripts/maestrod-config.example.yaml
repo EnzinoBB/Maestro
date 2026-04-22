@@ -1,12 +1,12 @@
-# Example daemon config — copy to /etc/rcad/config.yaml and fill in.
+# Example daemon config — copy to /etc/maestrod/config.yaml and fill in.
 # The install-daemon.sh script generates this file automatically; this
 # example is for reference when deploying manually.
 
 host_id: CHANGE_ME                          # unique id of this host (matches hosts.<id> in deployment.yaml)
 endpoint: wss://control-plane.example:8000/ws/daemon
-token: CHANGE_ME                            # shared secret with the control plane (RCA_DAEMON_TOKEN)
-working_dir: /var/lib/rcad
-state_path: /var/lib/rcad/state.db
+token: CHANGE_ME                            # shared secret with the control plane (MAESTRO_DAEMON_TOKEN)
+working_dir: /var/lib/maestrod
+state_path: /var/lib/maestrod/state.db
 docker_enabled: true
 systemd_enabled: true
 insecure: false                             # set true only for local dev without TLS

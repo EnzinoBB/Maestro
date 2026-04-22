@@ -29,7 +29,7 @@ produttivo, HA, CLI, packaging e documentazione utente.
 - mTLS daemon ↔ control plane con CA interna.
 - Autenticazione utente sulla UI e sull'API (OIDC + API token), RBAC
   (ruoli: admin, operator, viewer) con permessi granulari su progetti.
-- CLI `rca` per operazioni da terminale (deploy, status, logs, tests,
+- CLI `maestro` per operazioni da terminale (deploy, status, logs, tests,
   rollback).
 - Packaging: Docker image del control plane pubblicata su registry, pacchetti
   .deb e .rpm del daemon, chart Helm del control plane opzionale.
@@ -96,12 +96,12 @@ A7. Estensione dei messaggi protocol: il K8s executor non usa WebSocket
 ### Gruppo B — Osservabilità
 
 B1. Metriche Prometheus esposte da control plane su `/metrics`:
-    - `rca_deploys_total{project, status}`
-    - `rca_deploy_duration_seconds{project, component}`
-    - `rca_hosts_connected`
-    - `rca_components_running{project, host}`
-    - `rca_rollbacks_total{reason}`
-    - `rca_ws_messages_total{direction, type}`
+    - `maestro_deploys_total{project, status}`
+    - `maestro_deploy_duration_seconds{project, component}`
+    - `maestro_hosts_connected`
+    - `maestro_components_running{project, host}`
+    - `maestro_rollbacks_total{reason}`
+    - `maestro_ws_messages_total{direction, type}`
     - Histogram dei tempi di healthcheck.
 
 B2. Metriche esposte dai daemon su `/metrics` (porta opzionale, disabilitata
@@ -193,10 +193,17 @@ D3. Graceful shutdown:
 ### Gruppo E — Sicurezza
 
 E1. Mutual TLS daemon ↔ control plane:
-    - Script `rca ca init` che genera una CA privata e un certificato
+    - Script `maestro ca init` che genera una CA privata e un certificato
       server per il control plane.
-    - `rca ca issue-daemon <host_id>` produce keypair firmato per un
-      daemon; il comando `install-daemon.sh` accetta il pacchetto cert.
+    - `maestro ca issue-daemon <host_id>` produce keypair firmato per un
+      daemon.
+    - **Canale di distribuzione del certificato al daemon: enrollment protocol**
+      (vedi `docs/superpowers/specs/2026-04-22-installer-scripts-design.md`,
+      Strato 2). Lo Strato 1 di quel design — implementato prima di Fase 2 —
+      distribuisce al daemon un token condiviso via `POST /api/enroll/<token>/consume`;
+      in Fase 3 la risposta del consume si estende da `{daemon_token}` a
+      `{daemon_cert, daemon_key, ca_cert}`. L'admin usa lo stesso flusso UI
+      "Add host" → enroll URL → `curl … | sudo bash` già disponibile.
     - Rotazione: il control plane può revocare (CRL in DB) e ri-emettere.
     - Fallback TLS + token rimane disponibile per retrocompatibilità,
       deprecato ma funzionante.
@@ -219,28 +226,50 @@ E4. Hardening:
     - Rate limiting base sugli endpoint pubblici.
     - Secrets mai loggati (allow-list dei campi loggabili).
 
+E5. Enrollment backend (Strato 2 del design 2026-04-22):
+    - Implementare tabella `host_enrollments` e migrations Alembic.
+    - Implementare endpoint `POST /api/enrollments`,
+      `GET /api/enrollments`, `DELETE /api/enrollments/<token>`,
+      `GET /enroll/<token>`, `POST /api/enroll/<token>/consume`.
+      Specifica completa in `docs/superpowers/specs/2026-04-22-installer-scripts-design.md`
+      §5.1-5.2.
+    - Estendere il consume response per includere
+      `{daemon_cert, daemon_key, ca_cert}` oltre a (o al posto di)
+      `daemon_token` (integra con E1).
+    - UI `/hosts` con "Add host" modal (design §5.3).
+    - `install-daemon.sh` aggiornato al flusso `curl …/enroll/<t> | sudo bash`
+      come canale canonico (design §5.4, variante full).
+    - Autorizzazione: `POST /api/enrollments` e `DELETE /api/enrollments/<t>`
+      richiedono permesso `host.create` / `host.revoke` (integra con E3 RBAC).
+    - Audit: ogni creazione / consume / revoca registrata (integra con B4).
+    - Retrocompatibilità: installazioni esistenti che usano `--token`
+      condiviso continuano a funzionare; nuovo canale enrollment è additivo.
+
 **Test:**
 - `test_mtls.py`: handshake con cert valido, handshake rigettato con cert
   non firmato dalla CA, revoca funzionante.
 - `test_authn.py`: flusso OIDC con provider mock, token jwt validato.
 - `test_rbac.py`: viewer non può deployare, operator può deployare ma non
   gestire vault, admin può tutto.
+- `test_enrollment.py`: crea enrollment, consume happy path, token scaduto
+  → 410, token già consumato → 410, `host_id_pattern` mismatch → 403,
+  revoca funzionante, audit record completo.
 
 ### Gruppo F — CLI
 
-F1. `rca` binario (in Go per coerenza col daemon, oppure un wheel Python
+F1. `maestro` binario (in Go per coerenza col daemon, oppure un wheel Python
     installabile — scegli e documenta). Comandi:
-    - `rca config validate <file>`
-    - `rca config apply <file>`
-    - `rca deploy [--component X]`
-    - `rca status [--project P]`
-    - `rca logs <component> [--follow] [--lines N]`
-    - `rca rollback <component> [--steps N]`
-    - `rca tests run <component> [--type unit|integration|smoke|all]`
-    - `rca vault set/get/list/delete`
-    - `rca hosts list`
+    - `maestro config validate <file>`
+    - `maestro config apply <file>`
+    - `maestro deploy [--component X]`
+    - `maestro status [--project P]`
+    - `maestro logs <component> [--follow] [--lines N]`
+    - `maestro rollback <component> [--steps N]`
+    - `maestro tests run <component> [--type unit|integration|smoke|all]`
+    - `maestro vault set/get/list/delete`
+    - `maestro hosts list`
 
-F2. Configurazione via `~/.config/rca/config.yaml` (endpoint control
+F2. Configurazione via `~/.config/maestro/config.yaml` (endpoint control
     plane, token).
 
 F3. Output: testo leggibile di default, `--json` per output strutturato.
@@ -255,12 +284,13 @@ F3. Output: testo leggibile di default, `--json` per output strutturato.
 
 G1. CI (GitHub Actions o equivalente) che:
     - Esegue tutti i test.
-    - Builda e pubblica `ghcr.io/<org>/rca-control-plane:<version>`.
-    - Builda binari `rcad` per linux/amd64 e linux/arm64, pubblica release.
+    - Builda e pubblica `ghcr.io/<org>/maestro-control-plane:<version>`. **[Già implementato in Strato 1 del design 2026-04-22 come `ghcr.io/enzinobb/maestro-cp`.]**
+    - Builda binari `maestrod` per linux/amd64 e linux/arm64, pubblica release.
+      **[Già implementato in Strato 1; Strato 1 include anche darwin/amd64 e darwin/arm64.]**
     - Costruisce pacchetti `.deb` e `.rpm` per il daemon (via `nfpm` o
-      `goreleaser`).
+      `goreleaser`). **[Nuovo lavoro di Fase 3.]**
 
-G2. Chart Helm in `deploy/helm/rca-control-plane/` per installare il
+G2. Chart Helm in `deploy/helm/maestro-control-plane/` per installare il
     control plane su Kubernetes con PostgreSQL sidecar o connessione
     esterna.
 
@@ -268,7 +298,9 @@ G3. Template `docker-compose.prod.yml` come alternativa al chart.
 
 G4. Script `scripts/upgrade.sh` che aggiorna installazioni esistenti
     (control plane in place + invocazione di daemon self-update se
-    richiesto).
+    richiesto). **[Le primitive `install-cp.sh --upgrade` e
+    `install-daemon.sh --upgrade` sono già disponibili dallo Strato 1 del
+    design 2026-04-22; `upgrade.sh` in Fase 3 le orchestra su fleet.]**
 
 ### Gruppo H — Documentazione utente
 
@@ -336,6 +368,10 @@ Tutti i test di accettazione Fase 1 e Fase 2 passano.
 - mTLS enforced (rifiuta daemon senza cert valido).
 - RBAC enforced (viewer non può deployare; test fallisce con 403).
 - OIDC flow funziona con provider mock.
+- Enrollment: dalla UI `/hosts` un admin crea un enroll URL, un host nuovo
+  esegue il one-liner `curl …/enroll/<t> | sudo bash`, il daemon si registra
+  con mTLS cert ricevuto via consume, appare in `GET /api/hosts` come `active`;
+  un secondo tentativo con lo stesso token ritorna 410.
 
 ### Accettazione 6 — PostgreSQL
 

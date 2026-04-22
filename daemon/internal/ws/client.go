@@ -124,8 +124,8 @@ func (c *Client) connectOnce(ctx context.Context) error {
 	if c.Token != "" {
 		hdr.Set("Authorization", "Bearer "+c.Token)
 	}
-	hdr.Set("X-RCA-Daemon-Id", c.HostID)
-	hdr.Set("X-RCA-Daemon-Version", c.Version)
+	hdr.Set("X-Maestro-Daemon-Id", c.HostID)
+	hdr.Set("X-Maestro-Daemon-Version", c.Version)
 
 	conn, resp, err := dialer.DialContext(ctx, u.String(), hdr)
 	if err != nil {

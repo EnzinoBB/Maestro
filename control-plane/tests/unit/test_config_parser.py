@@ -69,14 +69,14 @@ def test_render_vars_and_source_image_defaulting():
 
 def test_render_missing_variable_raises():
     yml = """
-api_version: rca/v1
+api_version: maestro/v1
 project: x
 hosts:
   h1: {type: linux, address: 1.2.3.4, user: x}
 components:
   a:
     source: {type: docker, image: nginx, tag: latest}
-    run: {type: docker, container_name: rca-a, env: {FOO: "{{ does_not_exist.x }}"}}
+    run: {type: docker, container_name: maestro-a, env: {FOO: "{{ does_not_exist.x }}"}}
 deployment:
   - host: h1
     components: [a]

@@ -16,7 +16,7 @@ import (
 )
 
 const systemdUnitTemplate = `[Unit]
-Description=RCA managed: {{.ComponentID}}
+Description=Maestro managed: {{.ComponentID}}
 After=network-online.target
 Wants=network-online.target
 
@@ -46,7 +46,7 @@ WantedBy=multi-user.target
 
 // SystemdRunner deploys a component as a managed systemd service.
 type SystemdRunner struct {
-	WorkingDirRoot string                   // root for component files (e.g. /opt/rca)
+	WorkingDirRoot string                   // root for component files (e.g. /opt/maestro)
 	UnitDir        string                   // where to write unit files (/etc/systemd/system)
 	Systemctl      string                   // path to systemctl
 	Exec           func(context.Context, string, ...string) (string, string, error) // overridable for tests
@@ -54,7 +54,7 @@ type SystemdRunner struct {
 
 func NewSystemdRunner() *SystemdRunner {
 	return &SystemdRunner{
-		WorkingDirRoot: "/opt/rca",
+		WorkingDirRoot: "/opt/maestro",
 		UnitDir:        "/etc/systemd/system",
 		Systemctl:      "systemctl",
 	}
@@ -79,9 +79,9 @@ func unitName(d *ComponentDeploy) string {
 		if strings.HasSuffix(u, ".service") {
 			return u
 		}
-		return "rca-" + u + ".service"
+		return "maestro-" + u + ".service"
 	}
-	return "rca-" + d.ComponentID + ".service"
+	return "maestro-" + d.ComponentID + ".service"
 }
 
 func (r *SystemdRunner) componentDir(d *ComponentDeploy) string {

@@ -42,7 +42,7 @@ Thumbs.db
 # Local configuration with real secrets (NEVER commit)
 docker-compose.yml
 credentials.yaml
-/etc_rcad_config.yaml
+/etc_maestrod_config.yaml
 daemon-config.yaml
 .env
 .env.*
@@ -51,3 +51,6 @@ daemon-config.yaml
 # Local SSH keys used only for dev test hosts
 *.pem
 id_rsa*
+
+# Git worktrees (local-only, not part of the source tree)
+.worktrees/

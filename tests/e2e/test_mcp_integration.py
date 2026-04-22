@@ -52,7 +52,7 @@ def step(name: str, fn):
         sys.exit(1)
 
 
-YAML = """api_version: rca/v1
+YAML = """api_version: maestro/v1
 project: mcp-e2e
 hosts:
   host1: {type: linux, address: 127.0.0.1, user: deploy}
@@ -61,7 +61,7 @@ components:
     source: {type: docker, image: nginx, tag: 1.27-alpine}
     run:
       type: docker
-      container_name: rca-mcp-probe
+      container_name: maestro-mcp-probe
       ports: ["18099:80"]
       restart: unless-stopped
     healthcheck:

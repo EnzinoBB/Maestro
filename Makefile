@@ -1,14 +1,19 @@
-# Remote Control Agent — root Makefile.
+# Maestro — root Makefile.
 # Fase 1 implementation.
 
-.PHONY: help build build-daemon build-linux build-control-plane \
-        test-unit test-integration test-e2e dev clean lint
+.PHONY: help build build-daemon build-all build-linux build-control-plane \
+        checksums build-image test-unit test-integration test-e2e dev clean lint
+
+VERSION ?= dev
+LDFLAGS := -s -w -X main.Version=$(VERSION)
 
 help:
 	@echo "Available targets:"
 	@echo "  make build                - build daemon + CP sanity check"
-	@echo "  make build-daemon         - native go build of rcad (dist/rcad)"
-	@echo "  make build-linux          - cross-compile rcad for linux/amd64"
+	@echo "  make build-daemon         - native go build of maestrod (dist/maestrod)"
+	@echo "  make build-all            - cross-compile maestrod for linux+darwin × amd64+arm64"
+	@echo "  make checksums            - write dist/SHA256SUMS"
+	@echo "  make build-image          - build local CP Docker image"
 	@echo "  make build-control-plane  - python compile + ruff checks"
 	@echo "  make test-unit            - unit tests (python + go)"
 	@echo "  make test-integration     - integration tests (go)"
@@ -16,14 +21,37 @@ help:
 	@echo "  make dev                  - start control plane locally"
 	@echo "  make clean                - remove build artifacts"
 
-build: build-linux build-control-plane
+build: build-daemon build-control-plane
 
 build-daemon:
-	cd daemon && CGO_ENABLED=0 go build -o ../dist/rcad ./cmd/rcad
+	cd daemon && CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" \
+		-o ../dist/maestrod ./cmd/maestrod
 
-build-linux:
-	cd daemon && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" \
-		-o ../dist/rcad-linux-amd64 ./cmd/rcad
+# Cross-compile all release targets. Matches the CI release matrix.
+build-all:
+	@mkdir -p dist
+	cd daemon && CGO_ENABLED=0 GOOS=linux  GOARCH=amd64 go build -ldflags="$(LDFLAGS)" \
+		-o ../dist/maestrod-linux-amd64 ./cmd/maestrod
+	cd daemon && CGO_ENABLED=0 GOOS=linux  GOARCH=arm64 go build -ldflags="$(LDFLAGS)" \
+		-o ../dist/maestrod-linux-arm64 ./cmd/maestrod
+	cd daemon && CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="$(LDFLAGS)" \
+		-o ../dist/maestrod-darwin-amd64 ./cmd/maestrod
+	cd daemon && CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="$(LDFLAGS)" \
+		-o ../dist/maestrod-darwin-arm64 ./cmd/maestrod
+
+# Deprecated alias; kept for muscle memory of Phase 1.
+build-linux: build-all
+
+# Generate SHA256SUMS for all binaries in dist/.
+checksums:
+	cd dist && sha256sum maestrod-* > SHA256SUMS
+
+# Build the CP multi-arch Docker image locally (single-arch: host arch).
+# Used mostly for local verification; CI uses docker buildx for multi-arch.
+build-image:
+	docker build -f control-plane/Dockerfile \
+		--build-arg VERSION=$(VERSION) \
+		-t ghcr.io/enzinobb/maestro-cp:$(VERSION) .
 
 build-control-plane:
 	cd control-plane && python -m compileall app -q

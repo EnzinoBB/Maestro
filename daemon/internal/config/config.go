@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
-// Config holds daemon configuration loaded from /etc/rcad/config.yaml.
+// Config holds daemon configuration loaded from /etc/maestrod/config.yaml.
 type Config struct {
 	HostID         string `yaml:"host_id"`
 	Endpoint       string `yaml:"endpoint"`
@@ -23,7 +24,7 @@ type Config struct {
 
 func (c *Config) Defaults() {
 	if c.WorkingDir == "" {
-		c.WorkingDir = "/var/lib/rcad"
+		c.WorkingDir = "/var/lib/maestrod"
 	}
 	if c.StatePath == "" {
 		c.StatePath = filepath.Join(c.WorkingDir, "state.db")
@@ -43,8 +44,18 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// Load reads config from path; env vars override: RCAD_HOST_ID, RCAD_ENDPOINT,
-// RCAD_TOKEN, RCAD_WORKING_DIR, RCAD_INSECURE=1.
+// normalizeEndpoint rewrites http(s):// schemes to ws(s):// so hand-edited
+// configs or earlier installer versions that stored an http URL still work.
+func (c *Config) normalizeEndpoint() {
+	if strings.HasPrefix(c.Endpoint, "http://") {
+		c.Endpoint = "ws://" + c.Endpoint[len("http://"):]
+	} else if strings.HasPrefix(c.Endpoint, "https://") {
+		c.Endpoint = "wss://" + c.Endpoint[len("https://"):]
+	}
+}
+
+// Load reads config from path; env vars override: MAESTROD_HOST_ID, MAESTROD_ENDPOINT,
+// MAESTROD_TOKEN, MAESTROD_WORKING_DIR, MAESTROD_INSECURE=1.
 func Load(path string) (*Config, error) {
 	c := &Config{}
 	if path != "" {
@@ -58,30 +69,32 @@ func Load(path string) (*Config, error) {
 			}
 		}
 	}
-	if v := os.Getenv("RCAD_HOST_ID"); v != "" {
+	if v := os.Getenv("MAESTROD_HOST_ID"); v != "" {
 		c.HostID = v
 	}
-	if v := os.Getenv("RCAD_ENDPOINT"); v != "" {
+	if v := os.Getenv("MAESTROD_ENDPOINT"); v != "" {
 		c.Endpoint = v
 	}
-	if v := os.Getenv("RCAD_TOKEN"); v != "" {
+	if v := os.Getenv("MAESTROD_TOKEN"); v != "" {
 		c.Token = v
 	}
-	if v := os.Getenv("RCAD_WORKING_DIR"); v != "" {
+	if v := os.Getenv("MAESTROD_WORKING_DIR"); v != "" {
 		c.WorkingDir = v
 	}
-	if v := os.Getenv("RCAD_STATE_PATH"); v != "" {
+	if v := os.Getenv("MAESTROD_STATE_PATH"); v != "" {
 		c.StatePath = v
 	}
-	if v := os.Getenv("RCAD_INSECURE"); v == "1" || v == "true" {
+	if v := os.Getenv("MAESTROD_INSECURE"); v == "1" || v == "true" {
 		c.Insecure = true
 	}
-	if os.Getenv("RCAD_DOCKER") != "0" {
+	if os.Getenv("MAESTROD_DOCKER") != "0" {
 		c.DockerEnabled = true
 	}
-	if os.Getenv("RCAD_SYSTEMD") != "0" {
+	if os.Getenv("MAESTROD_SYSTEMD") != "0" {
 		c.SystemdEnabled = true
 	}
+	applyPlatformDefaults(c)
+	c.normalizeEndpoint()
 	c.Defaults()
 	return c, c.Validate()
 }

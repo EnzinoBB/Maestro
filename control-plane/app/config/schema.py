@@ -1,4 +1,4 @@
-"""Pydantic models for `deployment.yaml` — Fase 1 subset of rca/v1."""
+"""Pydantic models for `deployment.yaml` — Fase 1 subset of maestro/v1."""
 from __future__ import annotations
 
 from typing import Any, Literal
@@ -198,6 +198,6 @@ class DeploymentSpec(_Base):
     @field_validator("api_version")
     @classmethod
     def _api_ver(cls, v: str) -> str:
-        if v not in ("rca/v1", "rca/v1beta", "rca/v1ga"):
+        if v not in ("maestro/v1", "maestro/v1beta", "maestro/v1ga"):
             raise ValueError(f"unsupported api_version: {v}")
         return v

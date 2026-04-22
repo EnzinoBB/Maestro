@@ -1,4 +1,4 @@
-module github.com/rca-project/rca-daemon
+module github.com/maestro-project/maestro-daemon
 
 go 1.22
 

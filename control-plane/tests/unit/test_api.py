@@ -11,7 +11,7 @@ from app.main import create_app
 @pytest.fixture
 def client(monkeypatch):
     with tempfile.TemporaryDirectory() as td:
-        monkeypatch.setenv("RCA_DB", os.path.join(td, "t.db"))
+        monkeypatch.setenv("MAESTRO_DB", os.path.join(td, "t.db"))
         app = create_app()
         with TestClient(app) as c:
             yield c

@@ -1,16 +1,28 @@
 services:
   control-plane:
     build:
-      context: ./control-plane
+      context: .
+      dockerfile: control-plane/Dockerfile
+      args:
+        VERSION: dev
+    # Or pin to a published image:
+    # image: ghcr.io/enzinobb/maestro-cp:latest
     ports:
       - "8000:8000"
     environment:
-      RCA_DB: /data/cp.db
-      RCA_LOG_LEVEL: INFO
-      # SECRET — generate a strong token and store your real value in
-      # docker-compose.yml (gitignored). The daemon must present the same
-      # token via its config `token:` field.
-      RCA_DAEMON_TOKEN: CHANGE_ME
+      MAESTRO_DB: /data/cp.db
+      MAESTRO_LOG_LEVEL: INFO
+      # If the CP runs behind a TLS-terminating reverse proxy (nginx,
+      # Caddy, traefik), set MAESTRO_PUBLIC_URL to the externally-visible
+      # URL. The /install-daemon.sh endpoint uses it to bake the correct
+      # CP URL into the installer script, defending against Host-header
+      # poisoning and scheme confusion. Without it, the endpoint falls
+      # back to request.url.scheme + Host header.
+      # MAESTRO_PUBLIC_URL: "https://cp.example.com"
+      # Leave MAESTRO_DAEMON_TOKEN unset on first start — the container will
+      # auto-generate one, persist it to /data/daemon-token, and print it
+      # prominently in the logs. To use your own token, set it here.
+      # MAESTRO_DAEMON_TOKEN: ""
     volumes:
       - cp-data:/data
 volumes:

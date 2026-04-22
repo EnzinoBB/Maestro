@@ -1,6 +1,6 @@
 # Architettura
 
-Questo documento descrive l'architettura generale di Remote Control Agent (RCA).
+Questo documento descrive l'architettura generale di Maestro.
 È il riferimento primario per chiunque — umano o agente — lavori sul codice.
 
 ## 1. Obiettivi e non-obiettivi
@@ -62,7 +62,7 @@ Questo documento descrive l'architettura generale di Remote Control Agent (RCA).
         ┌───────────────────────────────┼────────────────────────────┐
         │                               │                            │
    ┌────▼────┐                    ┌─────▼────┐                 ┌─────▼────┐
-   │  rcad   │                    │   rcad   │                 │   rcad   │
+   │maestrod │                    │ maestrod │                 │ maestrod │
    │ host A  │                    │  host B  │                 │ host C   │
    └────┬────┘                    └─────┬────┘                 └─────┬────┘
         │                               │                            │
@@ -85,7 +85,7 @@ Servizio Python (FastAPI). Responsabilità:
 - Gestire l'hub WebSocket verso i daemon.
 - Centralizzare log e metriche ricevuti dai daemon.
 
-### Daemon (rcad)
+### Daemon (maestrod)
 
 Binario Go statico installato come servizio systemd su ogni host. Responsabilità:
 
@@ -321,7 +321,7 @@ tests/
 ### Daemon (`daemon/`)
 
 ```
-cmd/rcad/
+cmd/maestrod/
 └── main.go               Entry point, parsing flag, lifecycle
 
 internal/

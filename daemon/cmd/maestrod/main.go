@@ -10,25 +10,25 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/rca-project/rca-daemon/internal/config"
-	"github.com/rca-project/rca-daemon/internal/metrics"
-	"github.com/rca-project/rca-daemon/internal/orchestrator"
-	"github.com/rca-project/rca-daemon/internal/runner"
-	"github.com/rca-project/rca-daemon/internal/state"
-	"github.com/rca-project/rca-daemon/internal/ws"
+	"github.com/maestro-project/maestro-daemon/internal/config"
+	"github.com/maestro-project/maestro-daemon/internal/metrics"
+	"github.com/maestro-project/maestro-daemon/internal/orchestrator"
+	"github.com/maestro-project/maestro-daemon/internal/runner"
+	"github.com/maestro-project/maestro-daemon/internal/state"
+	"github.com/maestro-project/maestro-daemon/internal/ws"
 )
 
-const Version = "0.1.0"
+var Version = "0.1.0"
 
 func main() {
 	var (
-		cfgPath    = flag.String("config", "/etc/rcad/config.yaml", "Path to daemon config")
+		cfgPath    = flag.String("config", "/etc/maestrod/config.yaml", "Path to daemon config")
 		showVer    = flag.Bool("version", false, "Print version and exit")
 		debug      = flag.Bool("debug", false, "Enable debug logging")
 	)
 	flag.Parse()
 	if *showVer {
-		fmt.Printf("rcad %s\n", Version)
+		fmt.Printf("maestrod %s\n", Version)
 		return
 	}
 
@@ -44,7 +44,7 @@ func main() {
 		log.Error("config load failed", "err", err)
 		os.Exit(2)
 	}
-	log.Info("rcad starting", "version", Version, "host_id", cfg.HostID, "endpoint", cfg.Endpoint)
+	log.Info("maestrod starting", "version", Version, "host_id", cfg.HostID, "endpoint", cfg.Endpoint)
 
 	st, err := state.Open(cfg.StatePath)
 	if err != nil {
