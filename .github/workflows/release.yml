@@ -1,0 +1,102 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  build-binaries:
+    name: Build binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: daemon/go.sum
+      - name: Cross-compile
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: make build-all VERSION=${VERSION}
+      - name: Generate checksums
+        run: make checksums
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+      - name: Attest binaries
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: |
+            dist/maestrod-linux-amd64
+            dist/maestrod-linux-arm64
+            dist/maestrod-darwin-amd64
+            dist/maestrod-darwin-arm64
+
+  build-image:
+    name: Build & push CP image
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & push
+        id: push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: control-plane/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ github.ref_name }}
+          tags: |
+            ghcr.io/enzinobb/maestro-cp:${{ github.ref_name }}
+            ghcr.io/enzinobb/maestro-cp:latest
+      - name: Attest image
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ghcr.io/enzinobb/maestro-cp
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+  release:
+    name: Publish GitHub Release
+    needs: [build-binaries, build-image]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: dist/
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/maestrod-linux-amd64
+            dist/maestrod-linux-arm64
+            dist/maestrod-darwin-amd64
+            dist/maestrod-darwin-arm64
+            dist/SHA256SUMS
+            scripts/install-cp.sh
+            scripts/install-daemon.sh
+          generate_release_notes: true
