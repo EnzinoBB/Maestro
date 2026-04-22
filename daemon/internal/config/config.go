@@ -82,6 +82,7 @@ func Load(path string) (*Config, error) {
 	if os.Getenv("MAESTROD_SYSTEMD") != "0" {
 		c.SystemdEnabled = true
 	}
+	applyPlatformDefaults(c)
 	c.Defaults()
 	return c, c.Validate()
 }
