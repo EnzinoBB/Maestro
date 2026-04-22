@@ -1,28 +1,29 @@
-# Protocollo Control Plane ↔ Daemon
+# Control Plane ↔ Daemon Protocol
 
-Questo documento descrive il protocollo di comunicazione fra il control plane
-e i daemon `maestrod`. Il trasporto è WebSocket su TLS (in produzione). Il formato
-dei messaggi è JSON.
+This document describes the communication protocol between the control plane
+and the `maestrod` daemons. The transport is WebSocket over TLS (in production).
+Messages are encoded as JSON.
 
-## 1. Stabilimento della connessione
+## 1. Connection establishment
 
-### Fase di handshake
+### Handshake phase
 
-Il daemon apre una connessione WebSocket verso l'endpoint del control plane
-(default `wss://<control-plane>/ws/daemon`) includendo i seguenti header HTTP:
+The daemon opens a WebSocket connection toward the control plane endpoint
+(default `wss://<control-plane>/ws/daemon`) and includes the following HTTP
+headers:
 
 ```
 Authorization: Bearer <daemon_token>
-X-Maestro-Daemon-Id: <id_univoco_del_daemon>
+X-Maestro-Daemon-Id: <unique_daemon_id>
 X-Maestro-Daemon-Version: <version_string>
-X-Maestro-Host-Info: <base64(json con hostname, os, arch, kernel)>
+X-Maestro-Host-Info: <base64(json with hostname, os, arch, kernel)>
 ```
 
-Il control plane valida il token, registra il daemon nell'hub e risponde
-con upgrade WebSocket riuscito. Se l'auth fallisce, risposta 401 e il daemon
-riprova dopo backoff.
+The control plane validates the token, registers the daemon in the hub, and
+responds with a successful WebSocket upgrade. If authentication fails, a 401
+is returned and the daemon retries after backoff.
 
-Dopo l'upgrade, il primo messaggio è un `hello` inviato dal control plane:
+After the upgrade, the first message is a `hello` sent by the control plane:
 
 ```json
 {
@@ -37,7 +38,8 @@ Dopo l'upgrade, il primo messaggio è un `hello` inviato dal control plane:
 }
 ```
 
-Il daemon risponde con `hello_ack` che include lo stato corrente sintetico:
+The daemon replies with `hello_ack`, which includes a summary of its current
+state:
 
 ```json
 {
@@ -56,38 +58,38 @@ Il daemon risponde con `hello_ack` che include lo stato corrente sintetico:
 }
 ```
 
-## 2. Envelope dei messaggi
+## 2. Message envelope
 
-Ogni messaggio ha la forma:
+Every message has the form:
 
 ```json
 {
-  "id": "<string univoco del messaggio>",
-  "type": "<string: categoria.nome>",
-  "in_reply_to": "<id del messaggio richiesto, se risposta>",
+  "id": "<unique message string>",
+  "type": "<string: category.name>",
+  "in_reply_to": "<id of the requested message, if a reply>",
   "payload": { ... },
   "ts": "2026-04-21T10:23:00Z"
 }
 ```
 
-Regole:
+Rules:
 
-- `id` è UUIDv4 o stringa monotona, a scelta del mittente.
-- Le risposte sincrone impostano `in_reply_to`.
-- Gli eventi asincroni (push da daemon) non impostano `in_reply_to`.
-- `ts` è opzionale ma raccomandato in ISO 8601 UTC.
+- `id` is a UUIDv4 or a monotonic string, chosen by the sender.
+- Synchronous replies set `in_reply_to`.
+- Asynchronous events (pushed by the daemon) do not set `in_reply_to`.
+- `ts` is optional but recommended, in ISO 8601 UTC.
 
-## 3. Tassonomia dei `type`
+## 3. Taxonomy of `type`
 
-I tipi seguono la convenzione `direction.category.name`:
+Types follow the convention `direction.category.name`:
 
-- `request.*` — richiesta che attende risposta
-- `response.*` — risposta sincrona
-- `event.*` — notifica asincrona
+- `request.*` — request expecting a reply
+- `response.*` — synchronous reply
+- `event.*` — asynchronous notification
 - `ping`, `pong` — heartbeat
 - `hello`, `hello_ack`, `bye` — lifecycle
 
-## 4. Richieste dal control plane al daemon
+## 4. Requests from the control plane to the daemon
 
 ### `request.state.get`
 
@@ -96,12 +98,12 @@ I tipi seguono la convenzione `direction.category.name`:
   "id": "ctl-0010",
   "type": "request.state.get",
   "payload": {
-    "components": ["api"]    // opzionale; se assente, tutti
+    "components": ["api"]    // optional; if absent, all
   }
 }
 ```
 
-Risposta:
+Reply:
 
 ```json
 {
@@ -135,8 +137,8 @@ Risposta:
 
 ### `request.deploy`
 
-Il messaggio più importante. Il control plane fornisce al daemon tutto il
-necessario per deployare un componente.
+The most important message. The control plane provides the daemon with
+everything it needs to deploy a component.
 
 ```json
 {
@@ -147,10 +149,10 @@ necessario per deployare un componente.
     "target_hash": "7a9b...",
     "deploy_mode": "cold",
     "source": {
-      "type": "inline_tarball",     // tarball del codice, base64
+      "type": "inline_tarball",     // tarball of the code, base64
       "data": "H4sIAAAAAAA..."
-      // oppure type=git e credenziali per clone lato daemon
-      // oppure type=docker_image e tag
+      // or type=git with credentials for the daemon-side clone
+      // or type=docker_image and tag
     },
     "build_steps": [
       {"command": "npm ci", "working_dir": ".", "env": {}}
@@ -158,8 +160,8 @@ necessario per deployare un componente.
     "config_files": [
       {"dest": "/opt/demo-api/.env", "mode": 420, "content_b64": "..."}
     ],
-    "run": { ... },              // ComponentSpec.run intero
-    "secrets": {                 // volatili, mai persistiti su disco dal daemon
+    "run": { ... },              // the entire ComponentSpec.run
+    "secrets": {                 // volatile, never persisted to disk by the daemon
       "DB_PASSWORD": "xxx"
     },
     "healthcheck": { ... },
@@ -168,7 +170,7 @@ necessario per deployare un componente.
 }
 ```
 
-Risposta (sincrona, può arrivare al termine del deploy):
+Reply (synchronous, may arrive at the end of the deployment):
 
 ```json
 {
@@ -191,7 +193,7 @@ Risposta (sincrona, può arrivare al termine del deploy):
 }
 ```
 
-In caso di errore:
+On error:
 
 ```json
 {
@@ -214,56 +216,56 @@ In caso di errore:
 }
 ```
 
-### Codici errore standard
+### Standard error codes
 
-| Code | Significato |
-|------|-------------|
-| `validation_error` | Payload non conforme allo schema atteso |
-| `auth_error` | Problemi di autenticazione verso registry/git |
-| `fetch_failed` | Impossibile scaricare sorgenti/immagini |
-| `build_failed` | Errore durante build |
-| `dependency_missing` | Dipendenza di sistema assente |
-| `config_error` | Template config non valido o variabile non risolta |
-| `runtime_error` | Errore all'avvio del componente |
-| `healthcheck_failed` | Componente avviato ma healthcheck fallito |
-| `timeout` | Operazione scaduta |
-| `conflict` | Stato corrente incompatibile con l'azione |
-| `not_found` | Componente non esiste |
-| `internal` | Errore interno del daemon |
+| Code | Meaning |
+|------|---------|
+| `validation_error` | Payload does not conform to the expected schema |
+| `auth_error` | Authentication issues against registry/git |
+| `fetch_failed` | Unable to fetch sources/images |
+| `build_failed` | Error during the build |
+| `dependency_missing` | Missing system dependency |
+| `config_error` | Invalid config template or unresolved variable |
+| `runtime_error` | Error while starting the component |
+| `healthcheck_failed` | Component started but healthcheck failed |
+| `timeout` | Operation timed out |
+| `conflict` | Current state incompatible with the action |
+| `not_found` | Component does not exist |
+| `internal` | Daemon internal error |
 
-### Altre richieste
+### Other requests
 
-- `request.start` — avvia un componente già installato
+- `request.start` — starts a component already installed
   ```json
   { "payload": {"component_id": "api"} }
   ```
-- `request.stop` — ferma un componente
+- `request.stop` — stops a component
   ```json
   { "payload": {"component_id": "api", "graceful_timeout_sec": 30} }
   ```
 - `request.restart` — stop + start
-- `request.rollback` — torna al precedente hash salvato
+- `request.rollback` — reverts to the previous saved hash
   ```json
   { "payload": {"component_id": "api", "steps_back": 1} }
   ```
-- `request.logs.tail` — chiede log recenti
+- `request.logs.tail` — asks for recent logs
   ```json
   { "payload": {"component_id": "api", "lines": 200, "since": "2026-04-21T09:00:00Z"} }
   ```
-- `request.logs.stream` — inizia uno stream (vedi §7)
-- `request.healthcheck.run` — forza un healthcheck immediato
-- `request.tests.run` (Fase 2) — esegue i test dichiarati
-- `request.metrics.snapshot` — chiede un sample istantaneo
+- `request.logs.stream` — starts a stream (see §7)
+- `request.healthcheck.run` — forces an immediate healthcheck
+- `request.tests.run` (Phase 2) — runs the declared tests
+- `request.metrics.snapshot` — asks for an instant sample
 
-## 5. Eventi asincroni dal daemon
+## 5. Asynchronous events from the daemon
 
-Pubblicati senza `in_reply_to`. Il control plane li dispatcha agli
-osservatori (UI, orchestrator, storage).
+Published without `in_reply_to`. The control plane dispatches them to the
+observers (UI, orchestrator, storage).
 
 ### `event.metrics`
 
-Inviato periodicamente (default ogni 30s) con snapshot delle metriche per tutti
-i componenti:
+Sent periodically (default every 30s) with a metric snapshot for all
+components:
 
 ```json
 {
@@ -310,10 +312,10 @@ i componenti:
 }
 ```
 
-### `event.drift_detected` (Fase 2)
+### `event.drift_detected` (Phase 2)
 
-Emesso quando il daemon nota che qualcosa è cambiato fuori dal suo controllo
-(es. qualcuno ha fatto `systemctl stop` manualmente).
+Emitted when the daemon notices that something has changed outside its control
+(e.g. someone ran `systemctl stop` manually).
 
 ```json
 {
@@ -328,7 +330,7 @@ Emesso quando il daemon nota che qualcosa è cambiato fuori dal suo controllo
 
 ### `event.log`
 
-Solo durante stream attivo. Un messaggio per linea (o batch).
+Only during an active stream. One message per line (or in batches).
 
 ```json
 {
@@ -343,59 +345,60 @@ Solo durante stream attivo. Un messaggio per linea (o batch).
 }
 ```
 
-## 6. Heartbeat e riconnessione
+## 6. Heartbeat and reconnection
 
-- Entrambi i lati inviano `ping` ogni `heartbeat_interval_sec` (default 15s).
-- Il ricevente risponde con `pong` sullo stesso id.
-- Se non arriva `pong` per 3 intervalli consecutivi, la connessione è
-  considerata morta e chiusa.
+- Both sides send `ping` every `heartbeat_interval_sec` (default 15s).
+- The receiver replies with `pong` on the same id.
+- If no `pong` arrives for 3 consecutive intervals, the connection is
+  considered dead and closed.
 
-Quando il daemon perde la connessione:
+When the daemon loses the connection:
 
-1. Marca internamente lo stato come "offline" (ma continua a gestire i
-   processi locali).
-2. Tenta la riconnessione con backoff esponenziale: 1s, 2s, 4s, 8s, ..., cap a
-   60s. Jitter ±20%.
-3. Al riaggancio, ripete l'handshake. Se il `component_hash` locale diverge
-   da quello che il control plane ha in memoria (perché qualcosa è successo
-   offline), si riconcilia: il control plane considera autoritativo lo stato
-   del daemon.
+1. It internally marks its state as "offline" (but keeps managing the local
+   processes).
+2. It attempts to reconnect with exponential backoff: 1s, 2s, 4s, 8s, ...,
+   capped at 60s. Jitter ±20%.
+3. On reconnect, it repeats the handshake. If the local `component_hash`
+   diverges from what the control plane has in memory (because something
+   happened offline), reconciliation kicks in: the control plane treats the
+   daemon's state as authoritative.
 
 ## 7. Streaming
 
-Alcune operazioni ammettono streaming (logs, output di build in tempo reale).
-Il protocollo:
+Some operations support streaming (logs, real-time build output). The
+protocol:
 
-1. Control plane invia `request.logs.stream` con un `stream_id` nel payload.
-2. Daemon risponde immediatamente con `response.logs.stream.started`.
-3. Daemon pubblica `event.log` con lo stesso `stream_id` fino a:
-   - `request.logs.stream.cancel` dal control plane, oppure
-   - `event.log.stream_ended` dal daemon (componente terminato)
+1. The control plane sends `request.logs.stream` with a `stream_id` in the
+   payload.
+2. The daemon replies immediately with `response.logs.stream.started`.
+3. The daemon publishes `event.log` with the same `stream_id` until:
+   - `request.logs.stream.cancel` from the control plane, or
+   - `event.log.stream_ended` from the daemon (component terminated)
 
-## 8. Dimensione dei messaggi
+## 8. Message size
 
-- Limite hard: 4 MB per messaggio.
-- Tarball di deploy più grandi → usare `source.type: git` (clone lato daemon)
-  o upload fuori banda via HTTP con URL firmato (Fase 2).
-- Streaming log: batch ogni 500ms o ogni 100 righe.
+- Hard limit: 4 MB per message.
+- Larger deploy tarballs → use `source.type: git` (daemon-side clone) or
+  out-of-band upload via HTTP with a signed URL (Phase 2).
+- Log streaming: batch every 500ms or every 100 lines.
 
-## 9. Versionamento del protocollo
+## 9. Protocol versioning
 
-L'handshake include `server_version` e `daemon_version`. Regole:
+The handshake includes `server_version` and `daemon_version`. Rules:
 
-- Major version uguale → compatibilità garantita.
-- Major version differente → connessione rifiutata con messaggio chiaro.
-- Minor version differente → consentita; le feature non supportate dalla parte
-  più vecchia ritornano `unsupported_operation`.
+- Same major version → compatibility guaranteed.
+- Different major version → connection rejected with a clear message.
+- Different minor version → allowed; features not supported by the older
+  side return `unsupported_operation`.
 
-Campi nuovi vanno aggiunti in modo additivo; rimozioni richiedono bump major.
+New fields are added additively; removals require a major-version bump.
 
-## 10. Sicurezza
+## 10. Security
 
-- TLS sempre, tranne in sviluppo locale esplicito (`--insecure`).
-- Token pre-shared gestito dal control plane; può essere revocato.
-- In produzione (Fase 3): mutual TLS con certificati per-daemon.
-- Tutti i secret nel payload `request.deploy` sono considerati volatili; il
-  daemon non li scrive mai su disco persistente, li passa solo come env var ai
-  processi figli.
-- Audit log di tutti i messaggi inviati/ricevuti lato control plane.
+- TLS always, except in explicit local development (`--insecure`).
+- Pre-shared token managed by the control plane; can be revoked.
+- In production (Phase 3): mutual TLS with per-daemon certificates.
+- All secrets in the `request.deploy` payload are considered volatile; the
+  daemon never writes them to persistent disk and only passes them as
+  environment variables to child processes.
+- Audit log of all messages sent/received on the control-plane side.

@@ -1,81 +1,80 @@
 ---
 name: maestro-orchestrator
 description: >
-  Pilota il sistema Maestro per deployare, monitorare e
-  gestire componenti applicativi su macchine Linux e, dalla Fase 3, cluster
-  Kubernetes. Usala quando l'utente chiede di modificare configurazioni di
-  deployment, lanciare/fermare/riavviare componenti, verificare lo stato di
-  deploy, leggere log o metriche, eseguire test di componenti, effettuare
-  rollback. La skill si appoggia al server MCP esposto dal control plane
-  Maestro.
+  Pilots the Maestro system to deploy, monitor, and
+  manage application components on Linux machines and, from Phase 3 on, on
+  Kubernetes clusters. Use it when the user asks to modify deployment
+  configurations, start/stop/restart components, check deploy status, read
+  logs or metrics, run component tests, or perform rollbacks. The skill
+  relies on the MCP server exposed by the Maestro control plane.
 ---
 
 # Maestro Orchestrator Skill
 
-Questa skill guida un agente AI nell'uso del server MCP del control plane
-Maestro. È pensata per ridurre il consumo di token esponendo un modello mentale
-chiaro e un flusso operativo standardizzato.
+This skill guides an AI agent in using the Maestro control plane's MCP
+server. It is designed to reduce token usage by exposing a clear mental
+model and a standardized operational flow.
 
-> Nota: questo è lo **skeleton** prodotto in Fase 0. Sarà arricchito in
-> Fase 2 con flussi decisionali completi e in Fase 3 con sezioni dedicate
-> a Kubernetes, RBAC e workflow avanzati.
+> Note: this is the **skeleton** produced in Phase 0. It will be enriched
+> in Phase 2 with full decision flows and in Phase 3 with sections
+> dedicated to Kubernetes, RBAC, and advanced workflows.
 
-## Modello mentale
+## Mental model
 
-Il sistema Maestro gestisce progetti descritti da un file `deployment.yaml` che
-enumera **hosts** (dove deployare) e **components** (cosa deployare), con
-un piano di assegnazione `deployment[]`. Ogni componente ha un `deploy_mode`
-(`cold`, `hot`, `blue_green`) e si accompagna a `healthcheck` e, opzionalmente,
-a `tests`.
+The Maestro system manages projects described by a `deployment.yaml` file
+that enumerates **hosts** (where to deploy) and **components** (what to
+deploy), with an assignment plan `deployment[]`. Each component has a
+`deploy_mode` (`cold`, `hot`, `blue_green`) and comes with a `healthcheck`
+and, optionally, with `tests`.
 
-Tre attori:
+Three actors:
 
-1. **Control plane** (Python): legge lo YAML, ordina le operazioni, parla
-   ai daemon.
-2. **Daemon** (`maestrod`, Go): un processo residente su ogni host che conosce
-   lo stato locale e esegue le azioni richieste.
-3. **Agente (tu)**: operi via server MCP del control plane.
+1. **Control plane** (Python): reads the YAML, orders the operations, talks
+   to the daemons.
+2. **Daemon** (`maestrod`, Go): a process running on each host that knows
+   the local state and executes the requested actions.
+3. **Agent (you)**: you operate via the control plane's MCP server.
 
-## Verbi MCP disponibili
+## Available MCP verbs
 
-Interrogali tramite il tool `list_tools` dell'MCP se incerto. In Fase 1:
+Query them through the MCP `list_tools` tool if unsure. In Phase 1:
 
 | Tool | Input | Output |
 |------|-------|--------|
-| `list_hosts` | — | Array di host con status, tag, componenti assegnati |
-| `get_state` | `project?` | Stato aggregato di tutti i componenti |
-| `get_component_state` | `component_id` | Stato dettagliato del singolo |
-| `validate_config` | `yaml_text` | OK o lista errori con path e messaggio |
-| `apply_config` | `yaml_text, dry_run?` | Diff + conferma applicazione |
-| `deploy` | `project?, component_id?` | Avvia deploy sincrono o async |
-| `start` / `stop` / `restart` | `component_id` | Esito operazione |
-| `tail_logs` | `component_id, lines?` | Array di righe |
+| `list_hosts` | — | Array of hosts with status, tags, assigned components |
+| `get_state` | `project?` | Aggregate state of all components |
+| `get_component_state` | `component_id` | Detailed state of a single component |
+| `validate_config` | `yaml_text` | OK or a list of errors with path and message |
+| `apply_config` | `yaml_text, dry_run?` | Diff + apply confirmation |
+| `deploy` | `project?, component_id?` | Starts a synchronous or async deploy |
+| `start` / `stop` / `restart` | `component_id` | Operation outcome |
+| `tail_logs` | `component_id, lines?` | Array of lines |
 
-Dalla Fase 2 si aggiungono: `rollback`, `run_tests`, `get_deployment_history`,
-`get_metrics`, `drift_status`.
+Starting in Phase 2: `rollback`, `run_tests`, `get_deployment_history`,
+`get_metrics`, `drift_status` are added.
 
-## Flusso operativo standard
+## Standard operational flow
 
-Il flusso raccomandato per **ogni modifica** alla configurazione:
+The recommended flow for **every change** to the configuration:
 
-1. **Validate**. Chiama `validate_config` con lo YAML proposto. Se ci sono
-   errori, correggili prima di procedere; **non** passare a `apply_config`
-   finché la validazione non è pulita.
-2. **Diff**. Chiama `apply_config` con `dry_run: true`. Mostra all'utente
-   quali componenti saranno creati, modificati, rimossi.
-3. **Conferma**. Attendi conferma esplicita dell'utente prima di applicare.
-4. **Apply**. Chiama `apply_config` con `dry_run: false`. Ricevi un handle
-   del deploy.
-5. **Watch**. Esegui poll di `get_state` (ogni 2-5s) finché tutti i
-   componenti impattati sono in stato terminale (`running`, `failed`).
-6. **Verify**. Leggi eventuali healthcheck falliti o log d'errore;
-   riporta un sommario all'utente.
-7. **Rollback** (se necessario): solo se il risultato è insoddisfacente e
-   l'utente lo chiede esplicitamente, invoca `rollback` (Fase 2+).
+1. **Validate**. Call `validate_config` with the proposed YAML. If there
+   are errors, fix them before proceeding; **do not** move to
+   `apply_config` until validation is clean.
+2. **Diff**. Call `apply_config` with `dry_run: true`. Show the user which
+   components will be created, modified, or removed.
+3. **Confirm**. Wait for explicit user confirmation before applying.
+4. **Apply**. Call `apply_config` with `dry_run: false`. Receive a deploy
+   handle.
+5. **Watch**. Poll `get_state` (every 2-5s) until all impacted components
+   are in a terminal state (`running`, `failed`).
+6. **Verify**. Read any failed healthchecks or error logs; report a
+   summary to the user.
+7. **Rollback** (if needed): only if the outcome is unsatisfactory and the
+   user explicitly asks for it, invoke `rollback` (Phase 2+).
 
-## Gestione errori
+## Error handling
 
-Gli errori dal server MCP hanno forma:
+Errors from the MCP server have the shape:
 
 ```json
 {
@@ -86,69 +85,72 @@ Gli errori dal server MCP hanno forma:
 }
 ```
 
-Azioni raccomandate per codice (elenco iniziale — sarà ampliato):
+Recommended actions per code (initial list — will be extended):
 
-- `validation_error` → mostra gli errori path-per-path all'utente; non
-  ritentare.
-- `auth_error` (Git/registry) → verifica credenziali nel vault, chiedi
-  all'utente di aggiornarle se mancanti.
-- `dependency_missing` → se `suggested_fix` propone un `apt install`,
-  riporta l'istruzione all'utente (in Fase 1 l'agente non esegue
-  comandi shell sull'host).
-- `healthcheck_failed` → leggi i log (`tail_logs`), estrai le ultime righe
-  d'errore, proponi un rollback.
-- `timeout` → aumenta `timeout_sec` se plausibile, oppure segnala
-  potenziale blocco.
-- `conflict` → lo stato attuale impedisce l'azione; leggi prima lo stato.
-- `not_found` → verifica che l'`id` esista.
+- `validation_error` → show the errors path-by-path to the user; do not
+  retry.
+- `auth_error` (Git/registry) → verify credentials in the vault, ask the
+  user to update them if missing.
+- `dependency_missing` → if `suggested_fix` proposes an `apt install`,
+  relay the instruction to the user (in Phase 1 the agent does not run
+  shell commands on the host).
+- `healthcheck_failed` → read the logs (`tail_logs`), extract the last
+  error lines, propose a rollback.
+- `timeout` → increase `timeout_sec` if plausible, or flag a potential
+  stall.
+- `conflict` → the current state prevents the action; read the state
+  first.
+- `not_found` → verify that the `id` exists.
 
-## Convenzioni d'uso token-efficient
+## Token-efficient usage conventions
 
-1. **Non scaricare log interi**. Usa `tail_logs` con `lines: 50-200`. Se
-   serve di più, chiedi un filtro per livello o timestamp.
-2. **Non fare poll aggressivo**. Intervallo 3-5 secondi basta.
-3. **Comprimi lo stato**. Se mostri lo stato all'utente, riassumi (es.
-   "3/3 componenti running, healthcheck OK") invece di dumpare il JSON.
-4. **Errori prima del resto**. Se un tool ritorna errore, analizzalo
-   subito; non procedere nel flusso come se fosse andato bene.
+1. **Do not download entire logs**. Use `tail_logs` with `lines: 50-200`.
+   If more is needed, ask for a filter by level or timestamp.
+2. **Do not poll aggressively**. A 3-5 second interval is enough.
+3. **Compress the state**. When showing state to the user, summarize (e.g.
+   "3/3 components running, healthcheck OK") instead of dumping the JSON.
+4. **Errors before anything else**. If a tool returns an error, analyze it
+   immediately; do not carry on with the flow as if it had succeeded.
 
-## Anti-pattern
+## Anti-patterns
 
-- **Non** editare direttamente i file sul disco dei daemon via altri
-  canali (SSH, ecc.). Tutto passa per il control plane.
-- **Non** avviare un `deploy` senza aver prima fatto `validate_config` e
-  aver mostrato il diff all'utente.
-- **Non** chiamare `start`/`stop` ripetutamente come surrogato di
-  restart: usa `restart` direttamente.
+- **Do not** edit files directly on the daemons' disks via other channels
+  (SSH, etc.). Everything goes through the control plane.
+- **Do not** start a `deploy` without first running `validate_config` and
+  having shown the diff to the user.
+- **Do not** call `start`/`stop` repeatedly as a surrogate for restart:
+  use `restart` directly.
 
-## Esempi di dialogo
+## Example dialogues
 
-**Utente**: "Aggiungi un secondo componente redis al progetto demo e
-deployalo su host1."
+**User**: "Add a second redis component to the demo project and deploy it
+on host1."
 
-1. `get_state` → capisco cosa c'è.
-2. Propongo all'utente uno YAML aggiornato che aggiunge il componente
-   `cache` con `source.type: docker, image: redis`.
-3. `validate_config` con lo YAML proposto.
-4. `apply_config` con `dry_run: true` → mostro diff ("+ cache").
-5. Conferma utente.
-6. `apply_config` con `dry_run: false`.
-7. Poll `get_state` finché `cache` è running.
-8. Sommario: "cache deployato, healthcheck verde."
+1. `get_state` → understand what's there.
+2. Propose to the user an updated YAML that adds the `cache` component
+   with `source.type: docker, image: redis`.
+3. `validate_config` with the proposed YAML.
+4. `apply_config` with `dry_run: true` → show diff ("+ cache").
+5. User confirmation.
+6. `apply_config` with `dry_run: false`.
+7. Poll `get_state` until `cache` is running.
+8. Summary: "cache deployed, healthcheck green."
 
-**Utente**: "Il servizio API non risponde."
+**User**: "The API service isn't responding."
 
 1. `get_component_state component_id=api`.
-2. Se `status: failed` o `healthcheck` failing: `tail_logs api lines=100`.
-3. Analizzo le ultime righe; se pattern noto (es. "connection refused to
-   database"), riporto la causa.
-4. Propongo `restart` o, in Fase 2+, `rollback` all'ultima versione green.
+2. If `status: failed` or `healthcheck` failing: `tail_logs api lines=100`.
+3. Analyze the last lines; if a known pattern (e.g. "connection refused to
+   database"), report the cause.
+4. Propose `restart` or, in Phase 2+, `rollback` to the last green
+   version.
 
-## Evoluzione
+## Evolution
 
-Questo documento cresce con il prodotto:
+This document grows with the product:
 
-- **Fase 1**: questo skeleton.
-- **Fase 2**: aggiungere sezioni su test, rollback, hot deploy, canary,
+- **Phase 1**: this skeleton.
+- **Phase 2**: add sections on tests, rollback, hot deploy, canary,
   git-sync, vault.
-- **Fase 3**: aggiungere Kubernetes, RBAC, observability, workflow multi-ambiente.
+- **Phase 3**: add Kubernetes, RBAC, observability, multi-environment
+  workflows.

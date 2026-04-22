@@ -1,90 +1,89 @@
-# Roadmap di sviluppo
+# Development roadmap
 
-Il progetto è pianificato in tre fasi incrementali. Ogni fase produce un
-artefatto utilizzabile ed è documentata da un file dedicato (`phase-N-*.md`)
-pensato per essere dato in pasto a un agente AI insieme al codice prodotto
-dalle fasi precedenti, consentendo sviluppo iterativo con basso consumo di
-token.
+The project is planned in three incremental phases. Each phase produces a
+usable artifact and is documented by a dedicated file (`phase-N-*.md`)
+designed to be fed to an AI agent together with the code produced in
+previous phases, enabling iterative development with low token usage.
 
-## Riassunto delle fasi
+## Phase summary
 
-| Fase | Nome | Obiettivo | Durata stimata |
-|------|------|-----------|----------------|
-| 1 | Prototipo | Slice verticale funzionante: deploy reale di un componente da YAML | 1-2 settimane |
-| 2 | Beta | Funzionalità complete: Git-sync, test, rollback, credential vault, hot deploy, MCP completo | 2-3 settimane |
-| 3 | Produzione | Kubernetes, osservabilità avanzata, HA, CLI, packaging, documentazione utente | 2-3 settimane |
+| Phase | Name | Goal | Estimated duration |
+|-------|------|------|--------------------|
+| 1 | Prototype | Working vertical slice: real deployment of a component from YAML | 1-2 weeks |
+| 2 | Beta | Complete features: Git-sync, tests, rollback, credential vault, hot deploy, full MCP | 2-3 weeks |
+| 3 | Production | Kubernetes, advanced observability, HA, CLI, packaging, user documentation | 2-3 weeks |
 
-## Fase 1 — Prototipo
+## Phase 1 — Prototype
 
 **In scope:**
-- YAML schema v1 (sottoinsieme), parser e validator.
-- Daemon Go con runner systemd e Docker, store SQLite, WebSocket client.
-- Control plane Python con FastAPI, WebSocket hub, orchestrator sequenziale,
-  REST API per la UI.
-- UI web minimale (HTMX, una pagina: dashboard + editor YAML + log).
-- Server MCP con i verbi essenziali.
+- YAML schema v1 (subset), parser, and validator.
+- Go daemon with systemd and Docker runners, SQLite store, WebSocket client.
+- Python control plane with FastAPI, WebSocket hub, sequential orchestrator,
+  REST API for the UI.
+- Minimal web UI (HTMX, one page: dashboard + YAML editor + logs).
+- MCP server with the essential verbs.
 - Skill skeleton.
-- Test unitari di entrambe le parti + test d'integrazione end-to-end che
-  deployano un componente Docker reale.
+- Unit tests on both sides + end-to-end integration tests that actually
+  deploy a real Docker component.
 
 **Out of scope:**
-- Kubernetes, Git-sync automatico, test framework per componenti, credential
-  vault avanzato, rollout canary/blue-green, hot deploy.
+- Kubernetes, automatic Git-sync, component test framework, advanced
+  credential vault, canary/blue-green rollouts, hot deploy.
 
-**Deliverable**: repository eseguibile con `docker compose up` del control
-plane + `maestrod` installabile su un host Linux; deployment end-to-end di
-`examples/deployment.yaml` funzionante.
+**Deliverable**: runnable repository with `docker compose up` for the
+control plane + `maestrod` installable on a Linux host; working end-to-end
+deployment of `examples/deployment.yaml`.
 
-## Fase 2 — Beta
+## Phase 2 — Beta
 
-**Aggiunge:**
-- Git-sync component (webhook + polling) con trigger automatico su commit.
-- Test framework per componenti (pre/post deploy, unit/integration/smoke).
-- Credential vault con backend file cifrato e interfaccia pluggable.
-- Rollback automatico su test/healthcheck falliti.
-- Hot deploy e blue_green per componenti che lo supportano.
-- Rollout canary.
-- UI web ricca (React) con streaming log, grafici metriche, storico deploy.
-- MCP server con tutti i verbi.
-- Skill completa con flussi decisionali documentati.
+**Adds:**
+- Git-sync component (webhooks + polling) with automatic trigger on commit.
+- Component test framework (pre/post deploy, unit/integration/smoke).
+- Credential vault with encrypted-file backend and pluggable interface.
+- Automatic rollback on failed tests/healthchecks.
+- Hot deploy and blue_green for components that support them.
+- Canary rollouts.
+- Rich web UI (React) with log streaming, metric charts, deployment history.
+- MCP server with all verbs.
+- Complete skill with documented decision flows.
 
-**Deliverable**: sistema usabile quotidianamente per progetti reali
-multi-componente.
+**Deliverable**: system usable daily for real multi-component projects.
 
-## Fase 3 — Produzione
+## Phase 3 — Production
 
-**Aggiunge:**
-- Runner Kubernetes (Deployment/StatefulSet/Helm).
-- Osservabilità: Prometheus metrics, tracing OpenTelemetry, audit log
-  strutturato.
-- High availability del control plane (PostgreSQL, cluster di istanze con
-  leader election).
-- mTLS daemon ↔ control plane.
-- CLI `maestro` per operazioni da terminale.
-- Pacchettizzazione: Docker image del control plane su registry, .deb/.rpm
-  del daemon, chart Helm opzionale.
-- Documentazione utente completa (guida installazione, tutorial, API reference).
-- RBAC di base per UI e MCP (utenti, ruoli, permessi).
+**Adds:**
+- Kubernetes runner (Deployment/StatefulSet/Helm).
+- Observability: Prometheus metrics, OpenTelemetry tracing, structured
+  audit log.
+- High availability of the control plane (PostgreSQL, cluster of instances
+  with leader election).
+- mTLS between daemon ↔ control plane.
+- `maestro` CLI for terminal operations.
+- Packaging: Docker image of the control plane on a registry, .deb/.rpm
+  of the daemon, optional Helm chart.
+- Complete user documentation (install guide, tutorial, API reference).
+- Basic RBAC for UI and MCP (users, roles, permissions).
 
-**Deliverable**: prodotto pronto per installazione presso un'organizzazione.
+**Deliverable**: product ready for installation at an organization.
 
-## Regole di transizione fra fasi
+## Rules for transitioning between phases
 
-Una fase si considera completa quando:
+A phase is considered complete when:
 
-1. Tutti i task del documento di fase sono risolti.
-2. Tutti i test di accettazione della fase passano.
-3. Il sistema si avvia e risponde ai comandi documentati nello stesso file.
-4. La documentazione di fase è aggiornata per riflettere eventuali
-   divergenze rispetto al piano iniziale.
+1. All tasks of the phase document are resolved.
+2. All acceptance tests of the phase pass.
+3. The system starts up and responds to the commands documented in the
+   same file.
+4. The phase documentation is updated to reflect any deviations from the
+   initial plan.
 
-Se una scelta tecnica del piano risulta errata durante l'implementazione,
-l'agente ha mandato di deviare documentando la deviazione e le motivazioni
-in un file `docs/deviations.md`.
+If a technical choice from the plan turns out to be wrong during
+implementation, the agent has a mandate to deviate, documenting the
+deviation and the reasons in a `docs/deviations.md` file.
 
-## Come dare i documenti in pasto a un agente
+## How to feed the documents to an agent
 
-Per la **Fase 1**: fornire all'agente:
+For **Phase 1**: provide the agent with:
 - `README.md`
 - `docs/architecture.md`
 - `docs/yaml-schema.md`
@@ -93,15 +92,15 @@ Per la **Fase 1**: fornire all'agente:
 - `examples/deployment.yaml`
 - `skill/SKILL.md`
 
-L'agente procederà dall'albero di directory vuoto al completamento della
-Fase 1.
+The agent will proceed from the empty directory tree to the completion of
+Phase 1.
 
-Per la **Fase 2**: fornire all'agente il repository come risulta al termine
-della Fase 1, più:
+For **Phase 2**: provide the agent with the repository as it stands at the
+end of Phase 1, plus:
 - `docs/phase-2-beta.md`
 
-Per la **Fase 3**: fornire il repository al termine della Fase 2, più:
+For **Phase 3**: provide the repository at the end of Phase 2, plus:
 - `docs/phase-3-production.md`
 
-Ogni documento di fase è volutamente autosufficiente: elenca prerequisiti,
-task, criteri di accettazione e test da eseguire.
+Each phase document is intentionally self-contained: it lists prerequisites,
+tasks, acceptance criteria, and tests to run.

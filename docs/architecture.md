@@ -1,42 +1,43 @@
-# Architettura
+# Architecture
 
-Questo documento descrive l'architettura generale di Maestro.
-È il riferimento primario per chiunque — umano o agente — lavori sul codice.
+This document describes the general architecture of Maestro.
+It is the primary reference for anyone — human or agent — working on the code.
 
-## 1. Obiettivi e non-obiettivi
+## 1. Goals and non-goals
 
-### Obiettivi
+### Goals
 
-- Permettere a un agente AI di pilotare il deployment, la configurazione e
-  l'avvio di progetti multi-componente su più macchine tramite uno schema YAML
-  semplice.
-- Ridurre il consumo di token dell'agente esponendo primitive di alto livello
-  (verbi ben definiti, risposte strutturate, errori classificati) invece di
-  richiedere ragionamento su output shell grezzi.
-- Supportare deploy idempotenti: solo i componenti variati vengono ridistribuiti
-  o riavviati.
-- Supportare più tipologie di runtime: processi gestiti da systemd, container
-  Docker, manifest Kubernetes (dalla Fase 3).
-- Integrarsi con Git per un flusso CI/CD reattivo (Fase 2).
-- Esporre un'interfaccia utente web per modifica della configurazione e
-  osservazione dello stato.
-- Esporre un server MCP così che qualsiasi agente compatibile possa operare sul
-  sistema.
+- Allow an AI agent to pilot deployment, configuration, and startup of
+  multi-component projects across multiple machines through a simple YAML
+  schema.
+- Reduce the agent's token usage by exposing high-level primitives
+  (well-defined verbs, structured responses, classified errors) instead of
+  requiring reasoning over raw shell output.
+- Support idempotent deployments: only changed components are redeployed
+  or restarted.
+- Support multiple runtime types: systemd-managed processes, Docker
+  containers, Kubernetes manifests (from Phase 3).
+- Integrate with Git for a reactive CI/CD workflow (Phase 2).
+- Expose a web user interface for configuration editing and state
+  observation.
+- Expose an MCP server so any compatible agent can operate on the system.
 
-### Non-obiettivi
+### Non-goals
 
-- Non vuole sostituire Ansible, Terraform, Puppet, Chef su progetti enterprise
-  complessi. L'obiettivo è coprire comodamente progetti di piccola-media scala.
-- Non vuole essere un sistema multi-tenant SaaS. È pensato per essere installato
-  e usato da una singola organizzazione.
-- Non gestisce il provisioning delle macchine stesse (creazione VM, networking,
-  firewall). Presuppone macchine già raggiungibili via rete.
+- Not intended to replace Ansible, Terraform, Puppet, or Chef on complex
+  enterprise projects. The goal is to comfortably cover small-to-medium
+  projects.
+- Not intended to be a multi-tenant SaaS system. It is designed to be
+  installed and used by a single organization.
+- Does not handle provisioning of the machines themselves (VM creation,
+  networking, firewall). It assumes machines are already reachable over
+  the network.
 
-## 2. Architettura a tre piani
+## 2. Three-tier architecture
 
 ```
                     ┌─────────────────────────────────────┐
-                    │          Utente / Agente AI         │
+                    │           User / AI agent           │
                     └────┬────────────┬───────────────────┘
                          │            │
                  HTTP/WS │            │ MCP (JSON-RPC)
@@ -74,163 +75,168 @@ Questo documento descrive l'architettura generale di Maestro.
 
 ### Control plane
 
-Servizio Python (FastAPI). Responsabilità:
+Python service (FastAPI). Responsibilities:
 
-- Leggere, validare, rendere persistenti e versionare i file `deployment.yaml`.
-- Mantenere il registro degli host connessi e dei componenti desiderati.
-- Calcolare il diff fra stato desiderato e stato osservato.
-- Orchestrare i deploy con la strategia configurata (sequenziale nella Fase 1,
-  canary/blue-green dalla Fase 2).
-- Esporre una REST API per la UI e un server MCP per gli agenti.
-- Gestire l'hub WebSocket verso i daemon.
-- Centralizzare log e metriche ricevuti dai daemon.
+- Read, validate, persist, and version `deployment.yaml` files.
+- Maintain the registry of connected hosts and desired components.
+- Compute the diff between desired state and observed state.
+- Orchestrate deployments with the configured strategy (sequential in
+  Phase 1, canary/blue-green from Phase 2).
+- Expose a REST API for the UI and an MCP server for agents.
+- Manage the WebSocket hub toward the daemons.
+- Centralize logs and metrics received from the daemons.
 
 ### Daemon (maestrod)
 
-Binario Go statico installato come servizio systemd su ogni host. Responsabilità:
+Static Go binary installed as a systemd service on each host. Responsibilities:
 
-- Stabilire la connessione WebSocket in uscita verso il control plane appena
-  avviato, autenticandosi con un token.
-- Mantenere uno store locale (SQLite) con lo stato corrente: componenti
-  installati, revisione deployata, config applicata, PID/container ID, stato
-  runtime, ultimo healthcheck.
-- Eseguire le azioni richieste dal control plane tramite i runner appropriati.
-- Pubblicare eventi non sollecitati (drift, crash, healthcheck falliti) e
-  metriche periodiche.
-- Gestire localmente il ciclo di vita dei processi, inclusi retry su errori
-  transitori.
+- Open an outbound WebSocket connection to the control plane on startup,
+  authenticating with a token.
+- Maintain a local store (SQLite) with the current state: installed
+  components, deployed revision, applied config, PID/container ID,
+  runtime state, last healthcheck.
+- Execute the actions requested by the control plane through the
+  appropriate runners.
+- Publish unsolicited events (drift, crash, failed healthchecks) and
+  periodic metrics.
+- Manage the lifecycle of processes locally, including retries on
+  transient errors.
 
-### Agente AI
+### AI agent
 
-Non è parte del codice che produciamo — è Claude (o un altro LLM) che parla al
-control plane via MCP. Il suo comportamento è guidato dalla skill in `skill/`,
-che lo istruisce sul flusso corretto (validate → diff → conferma → apply →
-watch → verify) e sulla gestione degli errori classificati.
+Not part of the code we produce — it is Claude (or another LLM) talking to
+the control plane via MCP. Its behavior is guided by the skill in `skill/`,
+which instructs it on the correct flow (validate → diff → confirm → apply →
+watch → verify) and on handling classified errors.
 
-## 3. Modello di comunicazione
+## 3. Communication model
 
 ### Control plane ↔ daemon
 
-Il daemon apre una singola WebSocket in uscita verso il control plane. Questo
-elimina la necessità di aprire porte in ingresso sugli host ed è amichevole
-con firewall/NAT.
+The daemon opens a single outbound WebSocket toward the control plane. This
+eliminates the need to open inbound ports on the hosts and is friendly to
+firewalls/NAT.
 
-Protocollo dettagliato in `protocol.md`. In sintesi:
+Detailed protocol in `protocol.md`. In summary:
 
-- Messaggi JSON con envelope `{id, type, payload}`.
-- Richieste dal control plane con id univoco; il daemon risponde con lo stesso id.
-- Il daemon pubblica eventi asincroni (`event.drift`, `event.healthcheck_failed`,
-  `event.metrics`) con tipo dedicato.
-- Heartbeat bidirezionale ogni 15 secondi; timeout a 45 secondi.
-- Riconnessione automatica con backoff esponenziale e jitter.
+- JSON messages with an envelope `{id, type, payload}`.
+- Requests from the control plane with a unique id; the daemon replies with
+  the same id.
+- The daemon publishes asynchronous events (`event.drift`,
+  `event.healthcheck_failed`, `event.metrics`) with a dedicated type.
+- Bidirectional heartbeat every 15 seconds; timeout at 45 seconds.
+- Automatic reconnection with exponential backoff and jitter.
 
-### Agente ↔ control plane (MCP)
+### Agent ↔ control plane (MCP)
 
-Server MCP esposto dal control plane con i verbi:
+MCP server exposed by the control plane, with the following verbs:
 
 - `list_hosts`, `get_host_state`
 - `list_components`, `get_component_state`
 - `get_config`, `validate_config`, `apply_config`
-- `deploy` (con target: host, componente o intero progetto), `rollback`
+- `deploy` (with target: host, component, or whole project), `rollback`
 - `start`, `stop`, `restart`
 - `run_tests`
 - `tail_logs`, `get_metrics`
 - `get_deployment_history`
 
-Tutti i verbi ritornano oggetti strutturati. Gli errori hanno una tassonomia
+All verbs return structured objects. Errors have a taxonomy
 (`validation_error`, `dependency_missing`, `auth_error`, `runtime_error`,
-`timeout`, `conflict`, `not_found`) con `suggested_fix` dove applicabile.
+`timeout`, `conflict`, `not_found`) with `suggested_fix` where applicable.
 
-### Utente ↔ control plane
+### User ↔ control plane
 
-- UI web (browser): pagine per dashboard, editor YAML, log streaming,
-  storico deploy.
-- REST API parallela alla MCP, usata dalla UI.
+- Web UI (browser): pages for dashboard, YAML editor, log streaming,
+  deployment history.
+- REST API parallel to MCP, used by the UI.
 
-## 4. Modello di stato e idempotenza
+## 4. State model and idempotency
 
-Lo stato di un componente deployato è una tripla:
+The state of a deployed component is a triple:
 
 ```
 component_hash = sha256(git_commit || rendered_config || build_artifact_hash)
 ```
 
-Ogni deploy:
+For each deployment:
 
-1. Il control plane calcola il `component_hash` desiderato.
-2. Chiede al daemon il `component_hash` corrente.
-3. Se coincidono, no-op (il componente è stabile).
-4. Se differiscono, il daemon esegue il deploy secondo il `deploy_mode`
-   dichiarato nello YAML (`hot`, `cold`, `blue_green`), poi aggiorna il suo
-   store con il nuovo hash.
+1. The control plane computes the desired `component_hash`.
+2. It asks the daemon for the current `component_hash`.
+3. If they match, no-op (the component is stable).
+4. If they differ, the daemon performs the deployment according to the
+   `deploy_mode` declared in the YAML (`hot`, `cold`, `blue_green`), then
+   updates its store with the new hash.
 
-Questo garantisce:
+This guarantees:
 
-- **Idempotenza**: un secondo run a parità di input non produce effetti.
-- **Deploy selettivo**: solo i componenti con hash cambiato vengono toccati.
-- **Rollback deterministico**: il daemon tiene lo storico degli ultimi N hash
-  e può tornare a uno precedente.
+- **Idempotency**: a second run with the same input has no effect.
+- **Selective deployment**: only components whose hash changed are touched.
+- **Deterministic rollback**: the daemon keeps a history of the last N hashes
+  and can revert to a previous one.
 
-## 5. Tipologie di deploy per componente
+## 5. Per-component deployment modes
 
 ```yaml
 deploy_mode: hot | cold | blue_green
 ```
 
-- **hot**: update senza downtime. Il runner sa come ricaricare senza fermare
-  (es. `systemctl reload`, container con `--recreate` e healthcheck, binario
-  che gestisce `SIGHUP`). Possibile solo se dichiarato dal componente.
-- **cold**: stop → deploy → start. Comporta downtime ma è universale.
-- **blue_green**: il nuovo è installato in parallelo, healthcheck, poi switch
-  del traffico e teardown del vecchio. Richiede load balancer o proxy davanti.
+- **hot**: zero-downtime update. The runner knows how to reload without
+  stopping (e.g. `systemctl reload`, a container with `--recreate` and a
+  healthcheck, a binary that handles `SIGHUP`). Only possible if declared
+  by the component.
+- **cold**: stop → deploy → start. Involves downtime but is universal.
+- **blue_green**: the new version is installed in parallel, healthchecked,
+  then traffic is switched and the old version torn down. Requires a load
+  balancer or proxy in front.
 
-## 6. Credenziali e sicurezza
+## 6. Credentials and security
 
-### Fase 1
+### Phase 1
 
-Credenziali in un file `credentials.yaml` cifrato con una master key derivata
-da passphrase utente (scrypt), memorizzata in chiaro solo in RAM nel control
-plane. Le credenziali supportate sono:
+Credentials stored in a `credentials.yaml` file encrypted with a master key
+derived from a user passphrase (scrypt), kept in cleartext only in the
+control plane's RAM. Supported credentials are:
 
-- SSH/token per accesso a Git (usato dal control plane per il clone dei repo).
-- Secrets per componenti (env vars) — trasmessi ai daemon via WebSocket al
-  momento del deploy, mai persistiti in chiaro su disco lato daemon.
-- Token di registrazione del daemon (pre-shared).
+- SSH/token for Git access (used by the control plane to clone repositories).
+- Component secrets (env vars) — transmitted to daemons over WebSocket at
+  deploy time, never persisted in cleartext on the daemon's disk.
+- Daemon registration token (pre-shared).
 
-### Fase 2+
+### Phase 2+
 
-Modulo `credentials` con interfaccia pluggable:
+A `credentials` module with a pluggable interface:
 
-- File cifrato locale (default).
-- Integrazione con HashiCorp Vault.
-- Integrazione con AWS Secrets Manager / GCP Secret Manager / Azure Key Vault.
+- Locally encrypted file (default).
+- HashiCorp Vault integration.
+- AWS Secrets Manager / GCP Secret Manager / Azure Key Vault integration.
 
-Le credenziali Git e i secrets applicativi sono concettualmente distinti ma
-passano attraverso la stessa interfaccia.
+Git credentials and application secrets are conceptually distinct but pass
+through the same interface.
 
-## 7. Integrazione Git / CI-CD
+## 7. Git / CI-CD integration
 
-Dalla Fase 2, un componente interno del control plane chiamato **git-sync**:
+From Phase 2, an internal control-plane component called **git-sync**:
 
-- Riceve webhook (GitHub, GitLab, Gitea, Bitbucket) configurati per i repo
-  dei componenti.
-- In alternativa, esegue polling configurabile (default 5 minuti).
-- Alla ricezione di un nuovo commit sul ref tracciato, segna il componente
-  come "drift detected" e, in base alla policy, esegue automaticamente il
-  deploy o notifica l'agente/utente.
-- Risolve `ref: main` a commit hash concreto prima di passarlo al daemon.
+- Receives webhooks (GitHub, GitLab, Gitea, Bitbucket) configured on the
+  component repositories.
+- Alternatively, runs configurable polling (5-minute default).
+- On receiving a new commit on the tracked ref, marks the component as
+  "drift detected" and, according to policy, automatically deploys or
+  notifies the agent/user.
+- Resolves `ref: main` to a concrete commit hash before passing it to the
+  daemon.
 
-## 8. Test e verifica
+## 8. Tests and verification
 
-### Test framework (Fase 2)
+### Test framework (Phase 2)
 
-Ogni componente nello YAML può dichiarare test:
+Each component in the YAML can declare tests:
 
 ```yaml
 tests:
   unit:
     command: npm test
-    when: pre_deploy      # blocca il deploy se falliscono
+    when: pre_deploy      # blocks the deploy on failure
   integration:
     command: npm run test:integration
     when: post_deploy
@@ -241,70 +247,71 @@ tests:
     when: post_deploy
 ```
 
-Il daemon esegue i test nella directory di lavoro del componente e riporta il
-risultato come evento strutturato. In caso di fallimento di un test bloccante,
-il control plane avvia il rollback.
+The daemon runs the tests in the component's working directory and reports
+the result as a structured event. On failure of a blocking test, the control
+plane triggers a rollback.
 
-### Test del prodotto stesso
+### Testing the product itself
 
-Stratificati su tre livelli:
+Layered across three levels:
 
-- **Unit test control plane**: `pytest`, mock dei client WebSocket, copertura
-  dei moduli parser YAML, orchestrator, validator.
-- **Unit test daemon**: test Go standard (`go test`), con runner mock.
-- **Integration test**: test che avviano control plane + daemon (o più daemon)
-  reali in processo, usano container Docker di supporto, verificano flussi end-to-end
-  (validate → apply → deploy → healthcheck → rollback).
+- **Control plane unit tests**: `pytest`, WebSocket-client mocks, coverage
+  of YAML parser, orchestrator, and validator modules.
+- **Daemon unit tests**: standard Go tests (`go test`), with runner mocks.
+- **Integration tests**: tests that spin up a real control plane + daemon
+  (or multiple daemons) in-process, use supporting Docker containers, and
+  verify end-to-end flows (validate → apply → deploy → healthcheck →
+  rollback).
 
-Ogni documento di fase include una sezione "Test di accettazione" che l'agente
-incaricato dello sviluppo deve eseguire autonomamente prima di dichiarare la
-fase completa.
+Each phase document includes an "Acceptance tests" section that the agent
+responsible for development must execute autonomously before declaring the
+phase complete.
 
-## 9. Scelte tecniche motivate
+## 9. Reasoned technical choices
 
-| Area | Scelta | Motivazione |
-|------|--------|-------------|
-| Daemon | Go | Binario statico single-file, facile distribuzione su qualsiasi Linux, basso consumo RAM, goroutine ottimali per WS + processi gestiti |
-| Control plane | Python (FastAPI) | Ecosistema maturo per MCP, integrazione Claude SDK, sviluppo rapido, UI stack flessibile |
-| Store daemon | SQLite | Zero dipendenze, transazionale, adatto a piccoli dataset locali |
-| Store control plane | SQLite (Fase 1) → PostgreSQL (Fase 3) | Migrazione banale via SQLAlchemy; SQLite basta per iterare |
-| Trasporto | WebSocket su TLS | Bidirezionale, NAT-friendly, gestito bene da entrambi gli ecosistemi |
-| UI | React + Vite (Fase 2) / HTMX (Fase 1) | Fase 1 minima e leggera; Fase 2 introduce componenti ricchi |
-| Auth MCP | Token bearer per client | Standard MCP, semplice da gestire |
-| Auth daemon | Token pre-shared + mutual TLS (Fase 3) | Pre-shared basta a Fase 1/2; mTLS aggiunto a Fase 3 per produzione |
+| Area | Choice | Rationale |
+|------|--------|-----------|
+| Daemon | Go | Static single-file binary, easy distribution on any Linux, low RAM footprint, goroutines optimal for WS + managed processes |
+| Control plane | Python (FastAPI) | Mature ecosystem for MCP, Claude SDK integration, rapid development, flexible UI stack |
+| Daemon store | SQLite | Zero dependencies, transactional, suitable for small local datasets |
+| Control-plane store | SQLite (Phase 1) → PostgreSQL (Phase 3) | Trivial migration via SQLAlchemy; SQLite is enough to iterate |
+| Transport | WebSocket over TLS | Bidirectional, NAT-friendly, well handled by both ecosystems |
+| UI | React + Vite (Phase 2) / HTMX (Phase 1) | Phase 1 minimal and light; Phase 2 introduces rich components |
+| MCP auth | Bearer token per client | MCP standard, simple to manage |
+| Daemon auth | Pre-shared token + mutual TLS (Phase 3) | Pre-shared is enough for Phase 1/2; mTLS added in Phase 3 for production |
 
-## 10. Struttura del codice
+## 10. Code structure
 
 ### Control plane (`control-plane/`)
 
 ```
 app/
 ├── main.py               FastAPI app, startup, uvicorn entry
-├── api/                  Endpoint REST per la UI
+├── api/                  REST endpoints for the UI
 │   ├── hosts.py
 │   ├── components.py
 │   ├── config.py
 │   └── deploy.py
 ├── ws/                   WebSocket hub
-│   ├── hub.py            Registry di connessioni attive
-│   ├── protocol.py       Definizione messaggi (pydantic models)
-│   └── handler.py        Dispatch di messaggi entranti
-├── mcp/                  Server MCP
+│   ├── hub.py            Registry of active connections
+│   ├── protocol.py       Message definitions (pydantic models)
+│   └── handler.py        Dispatch of incoming messages
+├── mcp/                  MCP server
 │   ├── server.py
-│   └── tools.py          Mapping verbi → funzioni orchestrator
-├── orchestrator/         Logica di business
-│   ├── engine.py         Motore deploy, gestione rollout
-│   ├── diff.py           Calcolo diff stato desiderato vs osservato
+│   └── tools.py          Verb → orchestrator-function mapping
+├── orchestrator/         Business logic
+│   ├── engine.py         Deployment engine, rollout management
+│   ├── diff.py           Desired-vs-observed diff computation
 │   ├── rollback.py
-│   └── tests_runner.py   (Fase 2)
-├── config/               Parser YAML
-│   ├── schema.py         Pydantic models dello schema
+│   └── tests_runner.py   (Phase 2)
+├── config/               YAML parser
+│   ├── schema.py         Pydantic schema models
 │   ├── loader.py
 │   ├── validator.py
 │   └── renderer.py       Template rendering (Jinja2)
-└── credentials/          Store credenziali
-    ├── vault.py          Interfaccia
-    └── file_backend.py   Backend file cifrato
+└── credentials/          Credential store
+    ├── vault.py          Interface
+    └── file_backend.py   Encrypted-file backend
 
 tests/
 ├── unit/
@@ -322,25 +329,25 @@ tests/
 
 ```
 cmd/maestrod/
-└── main.go               Entry point, parsing flag, lifecycle
+└── main.go               Entry point, flag parsing, lifecycle
 
 internal/
-├── config/               Config locale del daemon (endpoint, token)
-├── ws/                   Client WebSocket
+├── config/               Daemon local config (endpoint, token)
+├── ws/                   WebSocket client
 │   ├── client.go
 │   ├── protocol.go
 │   └── reconnect.go
-├── state/                Store locale
-│   ├── store.go          Interfaccia
+├── state/                Local store
+│   ├── store.go          Interface
 │   └── sqlite.go
-├── runner/               Esecutori per tipologia
-│   ├── runner.go         Interfaccia
+├── runner/               Executors by type
+│   ├── runner.go         Interface
 │   ├── systemd.go
 │   └── docker.go
-├── metrics/              Collettore metriche
+├── metrics/              Metric collector
 │   ├── collector.go
 │   └── system.go
-└── orchestrator/         Mini-orchestratore locale (retry, lifecycle)
+└── orchestrator/         Local mini-orchestrator (retry, lifecycle)
     └── lifecycle.go
 
 test/integration/
@@ -349,60 +356,60 @@ test/integration/
 └── ws_roundtrip_test.go
 ```
 
-I test unitari Go stanno accanto al codice (`foo_test.go` vicino a `foo.go`)
-per convenzione.
+By Go convention, unit tests sit alongside the code (`foo_test.go` next to
+`foo.go`).
 
-### Test cross-componente (`tests/`)
+### Cross-component tests (`tests/`)
 
 ```
 e2e/
-├── test_full_deploy.py        Avvia control plane + un daemon reale, deploy completo
-├── test_idempotency.py        Verifica che un secondo apply sia no-op
-├── test_rollback.py           Simula fallimento e verifica rollback
-└── test_multi_host.py         Due daemon, componenti distribuiti
+├── test_full_deploy.py        Spins up control plane + one real daemon, full deploy
+├── test_idempotency.py        Verifies that a second apply is a no-op
+├── test_rollback.py           Simulates a failure and verifies rollback
+└── test_multi_host.py         Two daemons, components distributed across them
 
 fixtures/
 ├── deployment-simple.yaml
 ├── deployment-multihost.yaml
-└── components/                Repository fake usati nei test
+└── components/                Fake repositories used in the tests
 ```
 
-## 11. Ciclo di vita di un deploy tipo
+## 11. Lifecycle of a typical deployment
 
-1. Utente modifica `deployment.yaml` via UI.
-2. UI chiama `POST /config/validate` → control plane valida lo schema e
-   ritorna eventuali errori.
-3. Se valido, UI chiama `POST /config/diff` → control plane mostra quali
-   componenti cambieranno.
-4. Utente conferma, UI chiama `POST /deploy`.
-5. Orchestrator determina l'ordine (topologico sulle dipendenze) e per
-   ciascun componente:
-   a. Risolve le credenziali necessarie.
-   b. Se serve clone Git, lo fa nel workspace del control plane.
-   c. Renderizza template di config con le variabili.
-   d. Invia al daemon target il messaggio `deploy` con payload completo.
-   e. Attende risposta; il daemon esegue, testa localmente, risponde.
-   f. Attende healthcheck positivo.
-6. Quando tutti i componenti sono green, l'operazione è marcata complete.
-7. In caso di fallimento di uno step, il control plane tenta rollback dei
-   componenti già deployati nella stessa sessione.
+1. User modifies `deployment.yaml` via the UI.
+2. UI calls `POST /config/validate` → the control plane validates the
+   schema and returns any errors.
+3. If valid, the UI calls `POST /config/diff` → the control plane shows
+   which components will change.
+4. User confirms, the UI calls `POST /deploy`.
+5. The orchestrator determines the order (topological over dependencies)
+   and, for each component:
+   a. Resolves the required credentials.
+   b. If a Git clone is needed, performs it in the control plane's workspace.
+   c. Renders config templates with the variables.
+   d. Sends the target daemon a `deploy` message with the full payload.
+   e. Waits for the reply; the daemon runs, tests locally, and responds.
+   f. Waits for a positive healthcheck.
+6. When all components are green, the operation is marked complete.
+7. On failure of a step, the control plane attempts rollback of the
+   components already deployed in the same session.
 
-## 12. Osservabilità
+## 12. Observability
 
-- Log strutturati (JSON) su stdout per daemon e control plane.
-- Metriche Prometheus esposte dal control plane (deploy per minuto, durata,
-  tasso di fallimento, numero host connessi).
-- Metriche per-componente raccolte dai daemon (CPU, RAM, restart count,
-  uptime) e pubblicate sul canale WebSocket.
-- Audit log persistente di tutte le azioni umane e agenti sul control plane.
+- Structured logs (JSON) on stdout for daemon and control plane.
+- Prometheus metrics exposed by the control plane (deploys per minute,
+  duration, failure rate, number of connected hosts).
+- Per-component metrics collected by the daemons (CPU, RAM, restart count,
+  uptime) and published over the WebSocket channel.
+- Persistent audit log of all human and agent actions on the control plane.
 
-## 13. Evoluzione prevista
+## 13. Planned evolution
 
-Vedi `roadmap.md` per la suddivisione in fasi. In sintesi:
+See `roadmap.md` for the phase breakdown. In summary:
 
-- **Fase 1 (Prototipo)**: slice verticale funzionante, Linux/systemd/Docker,
-  YAML v1, UI minimale, MCP base, no Git-sync, no K8s.
-- **Fase 2 (Beta)**: Git-sync, test framework, credential vault, rollback/hot,
-  MCP completo, UI ricca, skill matura.
-- **Fase 3 (Production)**: Kubernetes, osservabilità avanzata, HA, CLI,
-  pacchettizzazione, documentazione utente completa.
+- **Phase 1 (Prototype)**: working vertical slice, Linux/systemd/Docker,
+  YAML v1, minimal UI, basic MCP, no Git-sync, no K8s.
+- **Phase 2 (Beta)**: Git-sync, test framework, credential vault, rollback/hot,
+  complete MCP, rich UI, mature skill.
+- **Phase 3 (Production)**: Kubernetes, advanced observability, HA, CLI,
+  packaging, complete user documentation.
