@@ -52,17 +52,28 @@ require_root() {
 }
 
 ensure_docker() {
-  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 \
+       && docker info >/dev/null 2>&1; then
     return 0
   fi
   if [[ -n "$NO_DOCKER_INSTALL" ]]; then
-    echo "Docker or 'docker compose' v2 is missing and --no-docker-install is set." >&2
+    echo "Docker or 'docker compose' v2 is missing / not running and --no-docker-install is set." >&2
     exit 3
   fi
-  echo "Installing Docker via get.docker.com …"
-  curl -fsSL https://get.docker.com | sh
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "Installing Docker via get.docker.com …"
+    curl -fsSL https://get.docker.com | sh
+  fi
   if ! docker compose version >/dev/null 2>&1; then
     echo "Docker installed but 'docker compose' v2 is not available. Install it manually." >&2
+    exit 3
+  fi
+  # Start the daemon if it's installed but not running.
+  if command -v systemctl >/dev/null 2>&1; then
+    systemctl enable --now docker >/dev/null 2>&1 || true
+  fi
+  if ! docker info >/dev/null 2>&1; then
+    echo "Docker is installed but the daemon is not responsive. Start it manually and re-run." >&2
     exit 3
   fi
 }
@@ -70,11 +81,11 @@ ensure_docker() {
 render_compose() {
   mkdir -p "$INSTALL_DIR"
   local vol_spec="cp-data:/data"
-  local vol_def="volumes:\n  cp-data:"
+  local named_volume="1"
   if [[ -n "$DATA_DIR" ]]; then
     mkdir -p "$DATA_DIR"
     vol_spec="${DATA_DIR}:/data"
-    vol_def=""
+    named_volume=""
   fi
   cat > "$INSTALL_DIR/docker-compose.yml" <<EOF
 services:
@@ -88,8 +99,13 @@ services:
       MAESTRO_LOG_LEVEL: INFO
     volumes:
       - ${vol_spec}
-$( [[ -n "$vol_def" ]] && printf "%b\n" "$vol_def" )
 EOF
+  if [[ -n "$named_volume" ]]; then
+    cat >> "$INSTALL_DIR/docker-compose.yml" <<EOF
+volumes:
+  cp-data:
+EOF
+  fi
 }
 
 wait_healthy() {
@@ -107,6 +123,11 @@ wait_healthy() {
 
 do_install() {
   require_root
+  if [[ -f "$INSTALL_DIR/docker-compose.yml" ]]; then
+    echo "Existing installation detected at $INSTALL_DIR/docker-compose.yml." >&2
+    echo "Use --upgrade to change version/port, or --uninstall first." >&2
+    exit 6
+  fi
   ensure_docker
   render_compose
   (cd "$INSTALL_DIR" && docker compose pull && docker compose up -d)
