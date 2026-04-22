@@ -28,13 +28,21 @@ curl -fsSL https://github.com/EnzinoBB/Maestro/releases/latest/download/install-
   | sudo bash
 ```
 
+Se il CP sta dietro un reverse proxy (nginx/Caddy/traefik con TLS), imposta
+`MAESTRO_PUBLIC_URL=https://tuo-dominio` nell'ambiente del container: è
+usato per comporre correttamente l'URL pubblico negli script installer
+serviti da `/install-daemon.sh`.
+
 L'installer verifica/installa Docker, avvia il container, attende l'healthcheck.
 Recupera il token generato al primo avvio:
 
 ```bash
-docker compose -f /opt/maestro-cp/docker-compose.yml logs control-plane \
-  | grep -A1 "GENERATED MAESTRO DAEMON TOKEN"
+docker compose -f /opt/maestro-cp/docker-compose.yml \
+  exec control-plane cat /data/daemon-token
 ```
+
+(Oppure dai log del primo avvio:
+`docker compose -f /opt/maestro-cp/docker-compose.yml logs control-plane | grep -A1 "GENERATED MAESTRO DAEMON TOKEN"`.)
 
 UI: `http://<cp-host>:8000`.
 

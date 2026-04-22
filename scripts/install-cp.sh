@@ -146,7 +146,8 @@ Maestro Control Plane is running.
   Compose:     $INSTALL_DIR/docker-compose.yml
 
 To retrieve the auto-generated daemon token:
-  docker compose -f $INSTALL_DIR/docker-compose.yml logs control-plane | grep -A1 "GENERATED MAESTRO DAEMON TOKEN"
+  docker compose -f $INSTALL_DIR/docker-compose.yml exec control-plane cat /data/daemon-token
+  (or from first-boot logs: docker compose -f $INSTALL_DIR/docker-compose.yml logs control-plane | grep -A1 "GENERATED MAESTRO DAEMON TOKEN")
 
 EOF
 }

@@ -12,6 +12,13 @@ services:
     environment:
       MAESTRO_DB: /data/cp.db
       MAESTRO_LOG_LEVEL: INFO
+      # If the CP runs behind a TLS-terminating reverse proxy (nginx,
+      # Caddy, traefik), set MAESTRO_PUBLIC_URL to the externally-visible
+      # URL. The /install-daemon.sh endpoint uses it to bake the correct
+      # CP URL into the installer script, defending against Host-header
+      # poisoning and scheme confusion. Without it, the endpoint falls
+      # back to request.url.scheme + Host header.
+      # MAESTRO_PUBLIC_URL: "https://cp.example.com"
       # Leave MAESTRO_DAEMON_TOKEN unset on first start — the container will
       # auto-generate one, persist it to /data/daemon-token, and print it
       # prominently in the logs. To use your own token, set it here.
