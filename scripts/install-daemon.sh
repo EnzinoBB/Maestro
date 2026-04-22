@@ -1,74 +1,156 @@
 #!/usr/bin/env bash
-# install-daemon.sh — install maestrod as a systemd service on a Linux host.
+# install-daemon.sh — install, upgrade, or uninstall the Maestro daemon.
 #
-# Usage:
-#   sudo ./install-daemon.sh \
-#     --endpoint ws://cp.example:8000/ws/daemon \
-#     --host-id api-server \
-#     --token SHARED_TOKEN \
-#     [--binary ./dist/maestrod-linux-amd64] \
-#     [--insecure]
+# Typical install (binary + service):
+#   curl -fsSL https://playmaestro.cloud/install-daemon.sh | sudo bash -s -- \
+#     --host-id api-01 --token <TOKEN>
+#
+# Or via GitHub:
+#   curl -fsSL https://github.com/EnzinoBB/Maestro/releases/latest/download/install-daemon.sh | \
+#     sudo bash -s -- --cp-url https://cp.example --host-id api-01 --token <TOKEN>
+#
+# Flags:
+#   --cp-url <url>       Control plane URL (also determines binary source).
+#                        If omitted, uses DEFAULT_CP_URL baked into the script.
+#   --host-id <id>       Identifier for this host (default: `hostname -s`)
+#   --token <token>      Shared daemon token (required for install)
+#   --version <tag>      Pin binary version; default: fetch from CP, fallback to GitHub latest
+#   --from-github        Force GitHub as binary source
+#   --insecure           Accept self-signed TLS / http CP (sets daemon insecure flag)
+#   --upgrade            Download new binary, restart service
+#   --uninstall          Stop + remove service and binary
+#   --purge              With --uninstall: also remove config and state dir
 set -euo pipefail
 
-ENDPOINT=""
-HOSTID=""
+# DEFAULT_CP_URL is string-substituted by the CP's /install-daemon.sh endpoint.
+# Leave empty in the repo copy; CI ensures this line survives unchanged.
+DEFAULT_CP_URL=""
+
+GITHUB_LATEST="https://github.com/EnzinoBB/Maestro/releases/latest/download"
+GITHUB_RELEASE_FMT="https://github.com/EnzinoBB/Maestro/releases/download/%s"
+
+CP_URL=""
+HOST_ID=""
 TOKEN=""
-BINARY=""
+VERSION=""
+FROM_GITHUB=""
 INSECURE=""
+MODE="install"
+PURGE=""
+
+usage() {
+  sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-0}"
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --endpoint) ENDPOINT="$2"; shift 2;;
-    --host-id) HOSTID="$2"; shift 2;;
-    --token) TOKEN="$2"; shift 2;;
-    --binary) BINARY="$2"; shift 2;;
-    --insecure) INSECURE="true"; shift;;
-    -h|--help)
-      grep '^#' "$0" | sed -n '1,20p' | sed 's/^# \?//'; exit 0;;
-    *) echo "unknown argument: $1" >&2; exit 2;;
+    --cp-url)      CP_URL="$2"; shift 2;;
+    --host-id)     HOST_ID="$2"; shift 2;;
+    --token)       TOKEN="$2"; shift 2;;
+    --version)     VERSION="$2"; shift 2;;
+    --from-github) FROM_GITHUB="1"; shift;;
+    --insecure)    INSECURE="1"; shift;;
+    --upgrade)     MODE="upgrade"; shift;;
+    --uninstall)   MODE="uninstall"; shift;;
+    --purge)       PURGE="1"; shift;;
+    -h|--help)     usage 0;;
+    *) echo "unknown argument: $1" >&2; usage 2;;
   esac
 done
 
-if [[ -z "$ENDPOINT" || -z "$HOSTID" ]]; then
-  echo "Missing required --endpoint or --host-id" >&2
-  exit 2
-fi
+[[ -z "$CP_URL" ]] && CP_URL="$DEFAULT_CP_URL"
 
-if [[ $EUID -ne 0 ]]; then
-  echo "This installer must run as root (prefix with sudo)." >&2
-  exit 1
-fi
+# ---- Platform detection ------------------------------------------------------
+OS_NAME="$(uname -s)"
+ARCH_NAME="$(uname -m)"
+case "$ARCH_NAME" in
+  x86_64|amd64) ARCH="amd64";;
+  aarch64|arm64) ARCH="arm64";;
+  *) echo "unsupported arch: $ARCH_NAME" >&2; exit 2;;
+esac
+case "$OS_NAME" in
+  Linux)  OS="linux";  SERVICE_KIND="systemd";;
+  Darwin) OS="darwin"; SERVICE_KIND="launchd";;
+  *) echo "unsupported OS: $OS_NAME" >&2; exit 2;;
+esac
 
-BIN_DST="/usr/local/bin/maestrod"
-CFG_DIR="/etc/maestrod"
+# ---- Paths -------------------------------------------------------------------
+if [[ "$OS" == "linux" ]]; then
+  BIN_DST="/usr/local/bin/maestrod"
+  CFG_DIR="/etc/maestrod"
+  WORK_DIR="/var/lib/maestrod"
+  UNIT_FILE="/etc/systemd/system/maestro-daemon.service"
+else
+  BIN_DST="/usr/local/bin/maestrod"
+  CFG_DIR="/usr/local/etc/maestrod"
+  WORK_DIR="/usr/local/var/maestrod"
+  PLIST_FILE="/Library/LaunchDaemons/com.maestro.daemon.plist"
+fi
 CFG_FILE="$CFG_DIR/config.yaml"
-UNIT_FILE="/etc/systemd/system/maestro-daemon.service"
-WORK_DIR="/var/lib/maestrod"
 
-if [[ -n "$BINARY" ]]; then
-  install -o root -g root -m 0755 "$BINARY" "$BIN_DST"
-elif [[ ! -x "$BIN_DST" ]]; then
-  echo "No --binary given and $BIN_DST missing; provide --binary" >&2
-  exit 2
-fi
+require_root() {
+  if [[ $EUID -ne 0 ]]; then
+    echo "This installer must run as root (prefix with sudo)." >&2
+    exit 1
+  fi
+}
 
-mkdir -p "$CFG_DIR" "$WORK_DIR"
-chmod 0750 "$CFG_DIR"
+# ---- Download binary + verify checksum --------------------------------------
+download_binary() {
+  local tmpdir; tmpdir="$(mktemp -d)"
+  trap 'rm -rf "$tmpdir"' RETURN
+  local binary_name="maestrod-${OS}-${ARCH}"
+  local base_url checksum_url
 
-cat > "$CFG_FILE" <<EOF
-host_id: ${HOSTID}
-endpoint: ${ENDPOINT}
+  if [[ -n "$FROM_GITHUB" || -z "$CP_URL" ]]; then
+    if [[ -n "$VERSION" ]]; then
+      # shellcheck disable=SC2059
+      base_url="$(printf "$GITHUB_RELEASE_FMT" "$VERSION")"
+    else
+      base_url="$GITHUB_LATEST"
+    fi
+  else
+    base_url="${CP_URL%/}/dist"
+  fi
+  checksum_url="${base_url}/SHA256SUMS"
+
+  echo "Downloading $binary_name from $base_url …"
+  curl -fsSL "${base_url}/${binary_name}" -o "$tmpdir/$binary_name"
+  curl -fsSL "$checksum_url" -o "$tmpdir/SHA256SUMS"
+
+  echo "Verifying SHA256 …"
+  (cd "$tmpdir" && grep " $binary_name\$" SHA256SUMS | sha256sum -c -) || {
+    echo "Checksum mismatch for $binary_name — aborting" >&2
+    exit 6
+  }
+
+  install -m 0755 "$tmpdir/$binary_name" "$BIN_DST"
+}
+
+# ---- Write config -----------------------------------------------------------
+write_config() {
+  mkdir -p "$CFG_DIR" "$WORK_DIR"
+  chmod 0750 "$CFG_DIR"
+  local systemd_flag="true"
+  [[ "$OS" == "darwin" ]] && systemd_flag="false"
+  cat > "$CFG_FILE" <<EOF
+host_id: ${HOST_ID}
+endpoint: ${CP_URL%/}/ws/daemon
 token: ${TOKEN}
 working_dir: ${WORK_DIR}
 state_path: ${WORK_DIR}/state.db
 docker_enabled: true
-systemd_enabled: true
+systemd_enabled: ${systemd_flag}
 insecure: ${INSECURE:-false}
 metrics_interval_sec: 30
 EOF
-chmod 0640 "$CFG_FILE"
+  chmod 0640 "$CFG_FILE"
+}
 
-cat > "$UNIT_FILE" <<'EOF'
+# ---- Service install (systemd) ----------------------------------------------
+install_systemd() {
+  cat > "$UNIT_FILE" <<EOF
 [Unit]
 Description=Maestro daemon (maestrod)
 After=network-online.target docker.service
@@ -76,7 +158,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/maestrod --config /etc/maestrod/config.yaml
+ExecStart=${BIN_DST} --config ${CFG_FILE}
 Restart=always
 RestartSec=5
 User=root
@@ -86,9 +168,130 @@ LimitNOFILE=65536
 [Install]
 WantedBy=multi-user.target
 EOF
+  systemctl daemon-reload
+  systemctl enable --now maestro-daemon.service
+}
 
-systemctl daemon-reload
-systemctl enable --now maestro-daemon.service
-sleep 1
-systemctl --no-pager status maestro-daemon.service | head -20 || true
-echo "maestrod installed and started."
+# ---- Service install (launchd) ----------------------------------------------
+install_launchd() {
+  cat > "$PLIST_FILE" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.maestro.daemon</string>
+  <key>ProgramArguments</key>
+    <array>
+      <string>${BIN_DST}</string>
+      <string>--config</string>
+      <string>${CFG_FILE}</string>
+    </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/var/log/maestro-daemon.out.log</string>
+  <key>StandardErrorPath</key><string>/var/log/maestro-daemon.err.log</string>
+</dict>
+</plist>
+EOF
+  chmod 0644 "$PLIST_FILE"
+  launchctl unload "$PLIST_FILE" 2>/dev/null || true
+  launchctl load "$PLIST_FILE"
+}
+
+# ---- Service control (both) -------------------------------------------------
+service_start() {
+  if [[ "$SERVICE_KIND" == "systemd" ]]; then install_systemd
+  else install_launchd; fi
+}
+
+service_stop() {
+  if [[ "$SERVICE_KIND" == "systemd" ]]; then
+    systemctl disable --now maestro-daemon.service 2>/dev/null || true
+    rm -f "$UNIT_FILE"
+    systemctl daemon-reload
+  else
+    launchctl unload "$PLIST_FILE" 2>/dev/null || true
+    rm -f "$PLIST_FILE"
+  fi
+}
+
+service_status_ok() {
+  if [[ "$SERVICE_KIND" == "systemd" ]]; then
+    systemctl is-active --quiet maestro-daemon.service
+  else
+    launchctl list | grep -q com.maestro.daemon
+  fi
+}
+
+wait_running() {
+  local tries=10
+  while (( tries > 0 )); do
+    if service_status_ok; then return 0; fi
+    sleep 1; tries=$((tries-1))
+  done
+  echo "daemon did not start within 10s; recent logs:" >&2
+  if [[ "$SERVICE_KIND" == "systemd" ]]; then
+    journalctl -u maestro-daemon.service -n 30 --no-pager >&2 || true
+  else
+    tail -n 30 /var/log/maestro-daemon.err.log 2>/dev/null >&2 || true
+  fi
+  return 7
+}
+
+# ---- Modes ------------------------------------------------------------------
+do_install() {
+  require_root
+  [[ -z "$HOST_ID" ]] && HOST_ID="$(hostname -s)"
+  if [[ -z "$TOKEN" ]]; then
+    echo "--token is required (read the CP logs: GENERATED MAESTRO DAEMON TOKEN)" >&2
+    exit 2
+  fi
+  if [[ -z "$CP_URL" ]]; then
+    echo "--cp-url is required (or invoke via an enroll URL served by the CP)" >&2
+    exit 2
+  fi
+  download_binary
+  write_config
+  service_start
+  wait_running
+  echo "maestrod installed and running (host_id=$HOST_ID, endpoint=$CP_URL)."
+}
+
+do_upgrade() {
+  require_root
+  if [[ ! -f "$CFG_FILE" ]]; then
+    echo "$CFG_FILE not found; run install first." >&2
+    exit 5
+  fi
+  # Derive CP_URL from existing config if not overridden.
+  if [[ -z "$CP_URL" ]]; then
+    CP_URL="$(awk -F': *' '/^endpoint:/ {print $2; exit}' "$CFG_FILE" | sed 's#/ws/daemon$##')"
+  fi
+  if [[ "$SERVICE_KIND" == "systemd" ]]; then
+    systemctl stop maestro-daemon.service
+  else
+    launchctl unload "$PLIST_FILE" 2>/dev/null || true
+  fi
+  download_binary
+  service_start
+  wait_running
+  echo "maestrod upgraded."
+}
+
+do_uninstall() {
+  require_root
+  service_stop
+  rm -f "$BIN_DST"
+  if [[ -n "$PURGE" ]]; then
+    rm -rf "$CFG_DIR" "$WORK_DIR"
+    echo "Purged: binary, service unit, config, state."
+  else
+    echo "Removed binary and service. Config and state preserved. Use --purge to wipe."
+  fi
+}
+
+case "$MODE" in
+  install)   do_install;;
+  upgrade)   do_upgrade;;
+  uninstall) do_uninstall;;
+esac
