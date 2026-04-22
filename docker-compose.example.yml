@@ -1,16 +1,21 @@
 services:
   control-plane:
     build:
-      context: ./control-plane
+      context: .
+      dockerfile: control-plane/Dockerfile
+      args:
+        VERSION: dev
+    # Or pin to a published image:
+    # image: ghcr.io/enzinobb/maestro-cp:latest
     ports:
       - "8000:8000"
     environment:
       MAESTRO_DB: /data/cp.db
       MAESTRO_LOG_LEVEL: INFO
-      # SECRET — generate a strong token and store your real value in
-      # docker-compose.yml (gitignored). The daemon must present the same
-      # token via its config `token:` field.
-      MAESTRO_DAEMON_TOKEN: CHANGE_ME
+      # Leave MAESTRO_DAEMON_TOKEN unset on first start — the container will
+      # auto-generate one, persist it to /data/daemon-token, and print it
+      # prominently in the logs. To use your own token, set it here.
+      # MAESTRO_DAEMON_TOKEN: ""
     volumes:
       - cp-data:/data
 volumes:
