@@ -116,11 +116,17 @@ download_binary() {
   checksum_url="${base_url}/SHA256SUMS"
 
   echo "Downloading $binary_name from $base_url …"
-  curl -fsSL "${base_url}/${binary_name}" -o "$tmpdir/$binary_name"
-  curl -fsSL "$checksum_url" -o "$tmpdir/SHA256SUMS"
+  curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused \
+       --connect-timeout 10 --max-time 300 \
+       "${base_url}/${binary_name}" -o "$tmpdir/$binary_name"
+  curl -fsSL --retry 3 --retry-delay 2 --retry-connrefused \
+       --connect-timeout 10 --max-time 60 \
+       "$checksum_url" -o "$tmpdir/SHA256SUMS"
 
   echo "Verifying SHA256 …"
-  (cd "$tmpdir" && grep " $binary_name\$" SHA256SUMS | sha256sum -c -) || {
+  # --ignore-missing lets sha256sum verify only the files we actually
+  # downloaded, without needing a fragile grep on the SUMS format.
+  (cd "$tmpdir" && sha256sum --ignore-missing -c SHA256SUMS) || {
     echo "Checksum mismatch for $binary_name — aborting" >&2
     exit 6
   }
@@ -145,7 +151,7 @@ systemd_enabled: ${systemd_flag}
 insecure: ${INSECURE:-false}
 metrics_interval_sec: 30
 EOF
-  chmod 0640 "$CFG_FILE"
+  chmod 0600 "$CFG_FILE"
 }
 
 # ---- Service install (systemd) ----------------------------------------------
@@ -250,6 +256,10 @@ do_install() {
     echo "--cp-url is required (or invoke via an enroll URL served by the CP)" >&2
     exit 2
   fi
+  if [[ ! "$CP_URL" =~ ^https?:// ]]; then
+    echo "--cp-url must start with http:// or https:// (got: $CP_URL)" >&2
+    exit 2
+  fi
   download_binary
   write_config
   service_start
@@ -267,13 +277,17 @@ do_upgrade() {
   if [[ -z "$CP_URL" ]]; then
     CP_URL="$(awk -F': *' '/^endpoint:/ {print $2; exit}' "$CFG_FILE" | sed 's#/ws/daemon$##')"
   fi
+  # Download + verify BEFORE stopping the service. If the download or
+  # checksum fails we must leave the running daemon untouched; install(8)
+  # overwrites the binary atomically via unlink+rename, and Linux keeps
+  # the running inode around until the process exits.
+  download_binary
   if [[ "$SERVICE_KIND" == "systemd" ]]; then
-    systemctl stop maestro-daemon.service
+    systemctl restart maestro-daemon.service
   else
     launchctl unload "$PLIST_FILE" 2>/dev/null || true
+    launchctl load "$PLIST_FILE"
   fi
-  download_binary
-  service_start
   wait_running
   echo "maestrod upgraded."
 }
