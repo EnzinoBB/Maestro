@@ -130,6 +130,12 @@ do_install() {
   fi
   ensure_docker
   render_compose
+  # Preserve a copy of this script at $INSTALL_DIR so admins can re-invoke
+  # --upgrade / --uninstall without re-downloading. Skip if we were piped
+  # from stdin (curl | bash) — in that case $0 won't be a real file.
+  if [[ -f "$0" ]]; then
+    install -m 0755 "$0" "$INSTALL_DIR/install-cp.sh"
+  fi
   (cd "$INSTALL_DIR" && docker compose pull && docker compose up -d)
   wait_healthy
   cat <<EOF

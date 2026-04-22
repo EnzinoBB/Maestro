@@ -252,6 +252,11 @@ wait_running() {
 # ---- Modes ------------------------------------------------------------------
 do_install() {
   require_root
+  if [[ -f "$CFG_FILE" ]]; then
+    echo "Existing installation detected at $CFG_FILE." >&2
+    echo "Use --upgrade to change version, or --uninstall first." >&2
+    exit 6
+  fi
   [[ -z "$HOST_ID" ]] && HOST_ID="$(hostname -s)"
   if [[ -z "$TOKEN" ]]; then
     echo "--token is required (read the CP logs: GENERATED MAESTRO DAEMON TOKEN)" >&2
