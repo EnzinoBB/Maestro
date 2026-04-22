@@ -37,7 +37,7 @@ It is the primary reference for anyone — human or agent — working on the cod
 
 ```
                     ┌─────────────────────────────────────┐
-                    │          Utente / Agente AI         │
+                    │           User / AI agent           │
                     └────┬────────────┬───────────────────┘
                          │            │
                  HTTP/WS │            │ MCP (JSON-RPC)
