@@ -38,3 +38,43 @@ func TestValidateMissing(t *testing.T) {
 	_, err := Load("")
 	require.Error(t, err)
 }
+
+func TestLoadNormalizesHTTPEndpointToWS(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	body := []byte(`
+host_id: host1
+endpoint: https://cp.example/ws/daemon
+token: t
+`)
+	if err := os.WriteFile(path, body, 0600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load err: %v", err)
+	}
+	if c.Endpoint != "wss://cp.example/ws/daemon" {
+		t.Fatalf("expected wss:// endpoint, got %q", c.Endpoint)
+	}
+}
+
+func TestLoadLeavesWSEndpointAlone(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	body := []byte(`
+host_id: host1
+endpoint: wss://cp.example/ws/daemon
+token: t
+`)
+	if err := os.WriteFile(path, body, 0600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load err: %v", err)
+	}
+	if c.Endpoint != "wss://cp.example/ws/daemon" {
+		t.Fatalf("expected endpoint unchanged, got %q", c.Endpoint)
+	}
+}

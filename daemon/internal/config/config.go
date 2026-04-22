@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -41,6 +42,16 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("endpoint is required")
 	}
 	return nil
+}
+
+// normalizeEndpoint rewrites http(s):// schemes to ws(s):// so hand-edited
+// configs or earlier installer versions that stored an http URL still work.
+func (c *Config) normalizeEndpoint() {
+	if strings.HasPrefix(c.Endpoint, "http://") {
+		c.Endpoint = "ws://" + c.Endpoint[len("http://"):]
+	} else if strings.HasPrefix(c.Endpoint, "https://") {
+		c.Endpoint = "wss://" + c.Endpoint[len("https://"):]
+	}
 }
 
 // Load reads config from path; env vars override: MAESTROD_HOST_ID, MAESTROD_ENDPOINT,
@@ -83,6 +94,7 @@ func Load(path string) (*Config, error) {
 		c.SystemdEnabled = true
 	}
 	applyPlatformDefaults(c)
+	c.normalizeEndpoint()
 	c.Defaults()
 	return c, c.Validate()
 }

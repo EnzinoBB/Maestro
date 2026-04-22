@@ -140,9 +140,14 @@ write_config() {
   chmod 0750 "$CFG_DIR"
   local systemd_flag="true"
   [[ "$OS" == "darwin" ]] && systemd_flag="false"
+  # gorilla/websocket requires ws:// or wss:// schemes. Translate from the
+  # http(s):// we accepted on --cp-url.
+  local ws_endpoint="${CP_URL%/}/ws/daemon"
+  ws_endpoint="${ws_endpoint/#http:\/\//ws://}"
+  ws_endpoint="${ws_endpoint/#https:\/\//wss://}"
   cat > "$CFG_FILE" <<EOF
 host_id: ${HOST_ID}
-endpoint: ${CP_URL%/}/ws/daemon
+endpoint: ${ws_endpoint}
 token: ${TOKEN}
 working_dir: ${WORK_DIR}
 state_path: ${WORK_DIR}/state.db
@@ -274,8 +279,11 @@ do_upgrade() {
     exit 5
   fi
   # Derive CP_URL from existing config if not overridden.
+  # Config stores ws://host/ws/daemon; download_binary needs http(s)://host.
   if [[ -z "$CP_URL" ]]; then
     CP_URL="$(awk -F': *' '/^endpoint:/ {print $2; exit}' "$CFG_FILE" | sed 's#/ws/daemon$##')"
+    CP_URL="${CP_URL/#ws:\/\//http://}"
+    CP_URL="${CP_URL/#wss:\/\//https://}"
   fi
   # Download + verify BEFORE stopping the service. If the download or
   # checksum fails we must leave the running daemon untouched; install(8)
