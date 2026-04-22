@@ -60,9 +60,17 @@ def serve_install_script(request: Request) -> Response:
         raise HTTPException(status_code=404)
     body = path.read_text(encoding="utf-8")
     # Substitute the placeholder DEFAULT_CP_URL="" with the URL of this CP.
-    cp_url = f"{request.url.scheme}://{request.headers.get('host', request.url.netloc)}"
+    # Prefer MAESTRO_PUBLIC_URL when set (defends against Host-header
+    # poisoning and fixes scheme when behind a TLS-terminating proxy);
+    # fall back to the request's scheme + Host header otherwise.
+    public = os.environ.get("MAESTRO_PUBLIC_URL")
+    if public:
+        cp_url = public.rstrip("/")
+    else:
+        cp_url = f"{request.url.scheme}://{request.headers.get('host', request.url.netloc)}"
     body = body.replace('DEFAULT_CP_URL=""', f'DEFAULT_CP_URL="{cp_url}"')
     return Response(
         content=body,
         media_type="text/x-shellscript; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
     )

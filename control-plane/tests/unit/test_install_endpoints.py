@@ -52,6 +52,15 @@ def test_dist_rejects_path_traversal(dist_fixture):
     assert r.status_code == 404
 
 
+def test_dist_rejects_non_whitelisted_name(dist_fixture):
+    # File exists on disk but is not on the allow-list.
+    dist, _ = dist_fixture
+    (dist / "secret.txt").write_bytes(b"nope")
+    client = TestClient(_app(dist_fixture))
+    r = client.get("/dist/secret.txt")
+    assert r.status_code == 404
+
+
 def test_install_script_substitutes_cp_url(dist_fixture):
     client = TestClient(_app(dist_fixture))
     r = client.get(
@@ -61,8 +70,27 @@ def test_install_script_substitutes_cp_url(dist_fixture):
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/x-shellscript")
     body = r.text
-    assert 'DEFAULT_CP_URL=""' not in body
-    assert "playmaestro.cloud" in body
+    assert 'DEFAULT_CP_URL="http://playmaestro.cloud"' in body
+
+
+def test_install_script_uses_public_url_env(dist_fixture, monkeypatch):
+    monkeypatch.setenv("MAESTRO_PUBLIC_URL", "https://playmaestro.cloud")
+    client = TestClient(_app(dist_fixture))
+    r = client.get(
+        "/install-daemon.sh",
+        headers={"host": "attacker.example"},  # must be ignored
+    )
+    assert r.status_code == 200
+    body = r.text
+    assert 'DEFAULT_CP_URL="https://playmaestro.cloud"' in body
+    assert "attacker.example" not in body
+
+
+def test_install_script_has_no_store_cache_header(dist_fixture):
+    client = TestClient(_app(dist_fixture))
+    r = client.get("/install-daemon.sh", headers={"host": "playmaestro.cloud"})
+    assert r.status_code == 200
+    assert r.headers.get("cache-control") == "no-store"
 
 
 def test_install_script_404_when_missing(tmp_path, monkeypatch):
