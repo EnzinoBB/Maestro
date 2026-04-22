@@ -21,7 +21,7 @@ help:
 	@echo "  make dev                  - start control plane locally"
 	@echo "  make clean                - remove build artifacts"
 
-build: build-linux build-control-plane
+build: build-daemon build-control-plane
 
 build-daemon:
 	cd daemon && CGO_ENABLED=0 go build -ldflags="$(LDFLAGS)" \

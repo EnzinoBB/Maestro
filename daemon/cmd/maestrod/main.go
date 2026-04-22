@@ -18,7 +18,7 @@ import (
 	"github.com/maestro-project/maestro-daemon/internal/ws"
 )
 
-const Version = "0.1.0"
+var Version = "0.1.0"
 
 func main() {
 	var (
