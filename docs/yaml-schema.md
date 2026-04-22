@@ -1,59 +1,59 @@
 # YAML Schema — deployment.yaml
 
-Questo documento definisce lo schema formale del file di configurazione del
-progetto (`deployment.yaml`). Le chiavi sono divise in sezioni e ogni campo
-indica la fase in cui viene introdotto.
+This document defines the formal schema of the project's configuration file
+(`deployment.yaml`). Keys are grouped into sections and each field indicates
+the phase in which it is introduced.
 
-## Versione
+## Version
 
-Lo schema è versionato. Il campo radice `api_version` è obbligatorio e permette
-evoluzione senza rompere compatibilità.
+The schema is versioned. The root field `api_version` is required and allows
+evolution without breaking compatibility.
 
 ```yaml
 api_version: maestro/v1
 ```
 
-Valori validi:
-- `maestro/v1` — introdotto in Fase 1
-- `maestro/v1beta` — campi di Fase 2
-- `maestro/v1ga` — campi di Fase 3 (K8s, advanced rollout)
+Valid values:
+- `maestro/v1` — introduced in Phase 1
+- `maestro/v1beta` — Phase 2 fields
+- `maestro/v1ga` — Phase 3 fields (K8s, advanced rollout)
 
-Un file `maestro/v1` deve rimanere accettabile anche nelle fasi successive (solo
-additiva).
+A `maestro/v1` file must remain acceptable in later phases as well (additive
+only).
 
-## Struttura di primo livello
+## Top-level structure
 
 ```yaml
 api_version: maestro/v1
-project: <string>              # Nome del progetto (obbligatorio)
-description: <string>          # Opzionale
+project: <string>              # Project name (required)
+description: <string>          # Optional
 
-hosts: { ... }                 # Macchine target
-components: { ... }            # Definizioni dei componenti
-deployment: [ ... ]            # Assegnazione componenti → host
+hosts: { ... }                 # Target machines
+components: { ... }            # Component definitions
+deployment: [ ... ]            # Component → host assignments
 
-defaults: { ... }              # Valori di default per componenti/host (opz.)
-credentials_ref: <string>      # Riferimento al file credenziali (opz.)
+defaults: { ... }              # Defaults for components/hosts (optional)
+credentials_ref: <string>      # Reference to the credentials file (optional)
 ```
 
 ## `hosts`
 
-Mappa `<id_host>: <HostSpec>`.
+Map `<host_id>: <HostSpec>`.
 
 ```yaml
 hosts:
   api-server:
-    type: linux                 # linux | kubernetes (Fase 3)
-    address: 10.0.0.10          # Solo per linux
-    port: 22                    # SSH, default 22 (Fase 1 non usa SSH ma lo tiene)
-    user: deploy                # Utente remoto per operazioni di setup
+    type: linux                 # linux | kubernetes (Phase 3)
+    address: 10.0.0.10          # linux only
+    port: 22                    # SSH, default 22 (Phase 1 does not use SSH but keeps it)
+    user: deploy                # Remote user for setup operations
     daemon:
-      endpoint_override: null   # Override URL del control plane per il daemon
+      endpoint_override: null   # Override of the control plane URL for the daemon
       install_method: auto      # auto | manual
-    tags: [prod, eu-west]       # Libere, usabili per selezione
+    tags: [prod, eu-west]       # Free-form, usable for selection
 ```
 
-### HostSpec per Kubernetes (Fase 3)
+### HostSpec for Kubernetes (Phase 3)
 
 ```yaml
 hosts:
@@ -67,46 +67,46 @@ hosts:
 
 ## `components`
 
-Mappa `<id_componente>: <ComponentSpec>`.
+Map `<component_id>: <ComponentSpec>`.
 
 ```yaml
 components:
   api:
     description: REST API service
-    source:               { ... }     # Da dove prendere il codice/immagine
-    build:                [ ... ]     # Passi di build (opz.)
-    config:               { ... }     # Config e template (opz.)
-    run:                  { ... }     # Come avviarlo
+    source:               { ... }     # Where to get the code/image from
+    build:                [ ... ]     # Build steps (optional)
+    config:               { ... }     # Config and templates (optional)
+    run:                  { ... }     # How to run it
     deploy_mode: hot                  # hot | cold | blue_green
-    reload_triggers:                  # Cosa forza cold anche se deploy_mode=hot
+    reload_triggers:                  # What forces cold even if deploy_mode=hot
       code: cold
       config: hot
       dependencies: cold
-    tests:                { ... }     # (Fase 2)
-    depends_on: [db]                  # Dipendenze logiche fra componenti
+    tests:                { ... }     # (Phase 2)
+    depends_on: [db]                  # Logical dependencies between components
     healthcheck:          { ... }
-    resources:            { ... }     # Limiti opzionali (Fase 2 per Docker)
+    resources:            { ... }     # Optional limits (Phase 2 for Docker)
 ```
 
 ### `source`
 
 ```yaml
-# Opzione A: Git
+# Option A: Git
 source:
   type: git
   repo: https://github.com/org/api.git
-  ref: main                 # branch, tag, o commit SHA
-  credentials_ref: git.github-org   # riferimento nel vault
-  subpath: services/api     # opzionale, se il componente è una sottocartella
+  ref: main                 # branch, tag, or commit SHA
+  credentials_ref: git.github-org   # vault reference
+  subpath: services/api     # optional, if the component is a subdirectory
 
-# Opzione B: Docker image pre-built
+# Option B: Pre-built Docker image
 source:
   type: docker
   image: myregistry.io/api
   tag: "1.4.2"
   pull_policy: if_not_present   # always | if_not_present | never
 
-# Opzione C: Archivio locale (utile per bootstrap)
+# Option C: Local archive (useful for bootstrap)
 source:
   type: archive
   path: ./artifacts/api.tar.gz
@@ -114,8 +114,8 @@ source:
 
 ### `build`
 
-Lista di step shell eseguiti nella directory del componente sul host (per
-sorgenti `git` o `archive`). Ignorato per `docker`.
+List of shell steps executed in the component's directory on the host (for
+`git` or `archive` sources). Ignored for `docker`.
 
 ```yaml
 build:
@@ -127,18 +127,18 @@ build:
       GOARCH: amd64
   - command: ./generate-assets.sh
     timeout: 600s           # default 300s
-    working_dir: web        # relativo alla root del componente
+    working_dir: web        # relative to the component root
 ```
 
 ### `config`
 
-Configurazione applicativa renderizzata prima del deploy.
+Application configuration rendered before the deployment.
 
 ```yaml
 config:
   templates:
-    - source: configs/api.env.j2     # relativo alla root del componente
-      dest: /etc/my-app/api.env      # dove finisce sul host
+    - source: configs/api.env.j2     # relative to the component root
+      dest: /etc/my-app/api.env      # where it ends up on the host
       mode: 0640
   vars:
     DB_HOST: "{{ hosts['db-server'].address }}"
@@ -149,12 +149,12 @@ config:
     JWT_SECRET: "{{ vault://jwt/secret }}"
 ```
 
-Le variabili supportano riferimenti a `hosts`, `components`, `vars` globali, e
-segreti via `vault://`.
+Variables support references to `hosts`, `components`, global `vars`, and
+secrets via `vault://`.
 
 ### `run`
 
-Specifica come il daemon deve eseguire il componente. Il tipo determina il
+Specifies how the daemon must run the component. The type determines the
 runner.
 
 #### systemd
@@ -178,7 +178,7 @@ run:
 ```yaml
 run:
   type: docker
-  image: "{{ source.image }}:{{ source.tag }}"   # risolto dal control plane
+  image: "{{ source.image }}:{{ source.tag }}"   # resolved by the control plane
   container_name: api
   ports:
     - "8080:8080"
@@ -190,19 +190,19 @@ run:
   networks:
     - app-net
   restart: unless-stopped
-  command: ["serve", "--port", "8080"]    # override CMD
-  resources:                               # Fase 2
+  command: ["serve", "--port", "8080"]    # CMD override
+  resources:                               # Phase 2
     memory: 512m
     cpus: "0.5"
 ```
 
-#### kubernetes (Fase 3)
+#### kubernetes (Phase 3)
 
 ```yaml
 run:
   type: kubernetes
   manifest_template: deploy/api.yaml.j2
-  # oppure:
+  # or:
   helm:
     chart: ./charts/api
     values:
@@ -215,21 +215,21 @@ run:
 ```yaml
 healthcheck:
   type: http                   # http | tcp | command
-  # Per http
+  # For http
   url: http://localhost:8080/health
   expect_status: 200
-  expect_body_contains: "ok"   # opzionale
-  # Per tcp
+  expect_body_contains: "ok"   # optional
+  # For tcp
   # port: 5432
-  # Per command
+  # For command
   # command: /usr/local/bin/check.sh
   interval: 10s
   timeout: 5s
-  start_period: 20s            # tempo concesso prima di considerare unhealthy
+  start_period: 20s            # grace time before being considered unhealthy
   retries: 3
 ```
 
-### `tests` (Fase 2)
+### `tests` (Phase 2)
 
 ```yaml
 tests:
@@ -237,11 +237,11 @@ tests:
     command: npm test
     when: pre_deploy           # pre_deploy | post_deploy
     timeout: 300s
-    blocking: true             # se true, un fail blocca il deploy
+    blocking: true             # if true, a failure blocks the deploy
   integration:
     command: npm run test:integration
     when: post_deploy
-    requires: [db, redis]      # attende che siano running
+    requires: [db, redis]      # waits until they are running
     blocking: true
   smoke:
     type: http
@@ -251,15 +251,15 @@ tests:
     blocking: false
 ```
 
-### `depends_on` e ordinamento
+### `depends_on` and ordering
 
-`depends_on` esprime dipendenze logiche fra componenti; il control plane
-costruisce il grafo e deploya in ordine topologico. Un ciclo è errore di
-validazione.
+`depends_on` expresses logical dependencies between components; the control
+plane builds the graph and deploys in topological order. A cycle is a
+validation error.
 
 ## `deployment`
 
-Lista di binding host → componenti con strategia di rollout opzionale.
+List of host → component bindings with an optional rollout strategy.
 
 ```yaml
 deployment:
@@ -268,9 +268,9 @@ deployment:
     strategy: sequential         # default
   - host: api-server
     components: [api]
-    depends_on_hosts: [db-server]   # attende che i deploy su quegli host siano green
+    depends_on_hosts: [db-server]   # waits until the deployments on those hosts are green
     strategy: sequential
-  - host: web-cluster            # gruppo virtuale (Fase 2)
+  - host: web-cluster            # virtual group (Phase 2)
     components: [web]
     strategy: canary
     canary:
@@ -279,18 +279,18 @@ deployment:
       verify_duration: 2m
 ```
 
-### Strategie di rollout disponibili
+### Available rollout strategies
 
-- `sequential` — deploy uno alla volta con healthcheck fra uno e l'altro
+- `sequential` — deploy one at a time with a healthcheck between each
   (default)
-- `parallel` — tutti insieme
-- `canary` — frazione iniziale, verify, espandi (Fase 2)
-- `blue_green` — a livello di host, se il componente supporta `blue_green`
-  (Fase 2)
+- `parallel` — all at once
+- `canary` — initial fraction, verify, expand (Phase 2)
+- `blue_green` — at host level, if the component supports `blue_green`
+  (Phase 2)
 
 ## `defaults`
 
-Valori di default applicati a tutti i componenti o host che non li sovrascrivono.
+Default values applied to all components or hosts that do not override them.
 
 ```yaml
 defaults:
@@ -305,47 +305,47 @@ defaults:
 
 ## `credentials_ref`
 
-Puntatore al file/backend delle credenziali. Se assente, il control plane cerca
-`credentials.yaml` nella stessa cartella del `deployment.yaml`.
+Pointer to the credentials file/backend. If absent, the control plane looks
+for `credentials.yaml` in the same directory as the `deployment.yaml`.
 
 ```yaml
-credentials_ref: ./credentials.yaml        # file locale cifrato
-# oppure
-credentials_ref: vault://hashi/team-a      # backend vault (Fase 2)
+credentials_ref: ./credentials.yaml        # local encrypted file
+# or
+credentials_ref: vault://hashi/team-a      # vault backend (Phase 2)
 ```
 
-## Variabili interpolabili
+## Interpolable variables
 
-La sintassi `{{ ... }}` (Jinja2) può riferirsi a:
+The `{{ ... }}` (Jinja2) syntax can reference:
 
-- `hosts['<id>'].address`, `.port`, `.tags` ecc.
-- `components['<id>'].<qualunque campo risolto>`
-- `config.vars.<nome>` (del componente corrente)
-- `vault://<path>` — risolto a runtime dal credential backend
-- `env.<VAR>` — variabile d'ambiente del control plane (uso sconsigliato fuori
-  dallo sviluppo)
+- `hosts['<id>'].address`, `.port`, `.tags`, etc.
+- `components['<id>'].<any resolved field>`
+- `config.vars.<name>` (of the current component)
+- `vault://<path>` — resolved at runtime by the credential backend
+- `env.<VAR>` — control-plane environment variable (discouraged outside
+  development)
 
-## Validazione
+## Validation
 
-Il control plane valida:
+The control plane validates:
 
-- Conformità sintattica allo schema (tipi, campi obbligatori).
-- Integrità referenziale (`depends_on` punta a componenti esistenti; ogni
-  `deployment.host` esiste in `hosts`; ogni `deployment.components` esiste in
-  `components`).
-- Assenza di cicli nelle dipendenze.
-- Risolvibilità dei riferimenti `{{ ... }}` con un passaggio di dry-run.
-- Presenza dei segreti referenziati nel credential backend.
+- Syntactic conformance to the schema (types, required fields).
+- Referential integrity (`depends_on` points to existing components; every
+  `deployment.host` exists in `hosts`; every `deployment.components` exists
+  in `components`).
+- Absence of cycles in the dependency graph.
+- Resolvability of `{{ ... }}` references via a dry-run pass.
+- Presence of the referenced secrets in the credential backend.
 
-Un file che fallisce la validazione viene rifiutato con errore strutturato
-che include path del campo e motivo.
+A file that fails validation is rejected with a structured error that
+includes the field path and the reason.
 
-## Esempio completo (minimale)
+## Complete example (minimal)
 
 ```yaml
 api_version: maestro/v1
 project: demo-stack
-description: Stack di esempio con API + DB
+description: Example stack with API + DB
 
 hosts:
   host1:
