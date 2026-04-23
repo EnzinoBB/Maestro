@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark light" />
+<title>Maestro — AI-agent-driven deployment orchestrator</title>
+<meta name="description" content="An AI-agent-driven deployment orchestrator for multi-host bare metal. One YAML, one Python control plane, one Go daemon per host." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;700&display=swap" />
+
+<link rel="stylesheet" href="site.css" />
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- ───────────── NAV ───────────── -->
+<header class="nav" role="banner">
+  <div class="container nav-inner">
+    <a href="#" class="wordmark" aria-label="Maestro home">
+      maestro<span class="accent">.</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#quickstart">Quickstart</a>
+      <a href="#how">How it works</a>
+      <a href="#arch">Architecture</a>
+      <a href="#agents">Agents</a>
+      <a href="#roadmap">Roadmap</a>
+      <a href="https://github.com/EnzinoBB/Maestro" rel="noopener">GitHub ↗</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme">
+      <span class="theme-icon" aria-hidden="true">☾</span>
+    </button>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ───────────── HERO ───────────── -->
+<section class="hero">
+  <div class="container">
+    <div class="eyebrow">
+      <span class="eyebrow-dot" aria-hidden="true"></span>
+      v0.1.0 — phase 1 prototype ✓
+    </div>
+
+    <h1 class="h-display">
+      Ship deploys by talking<br />to your agent.
+    </h1>
+
+    <p class="lede">
+      An AI-agent-driven deployment orchestrator for multi-host bare metal.
+      One YAML, one Python control plane, one Go daemon per host. That's it.
+    </p>
+
+    <div class="hero-codes">
+      <!-- tabbed code block: deployment.yaml / cli -->
+      <div class="codeblock" data-tabs>
+        <div class="codeblock-head" role="tablist">
+          <button class="tab is-active" role="tab" aria-selected="true" data-tab="yaml">deployment.yaml</button>
+          <button class="tab" role="tab" aria-selected="false" data-tab="cli">cli</button>
+          <button class="copy" type="button" data-copy="yaml" title="Copy">copy</button>
+        </div>
+        <pre class="code" data-pane="yaml"><code><span class="c-k">version:</span> <span class="c-n">1</span>
+<span class="c-k">hosts:</span>
+  - <span class="c-k">name:</span> web-01
+    <span class="c-k">addr:</span> <span class="c-s">10.0.0.12</span>
+<span class="c-k">components:</span>
+  - <span class="c-k">name:</span> api
+    <span class="c-k">runner:</span> docker
+    <span class="c-k">image:</span> ghcr.io/acme/api:v2
+    <span class="c-k">env:</span>
+      <span class="c-k">DATABASE_URL:</span> <span class="c-s">${secrets.pg}</span>
+  - <span class="c-k">name:</span> caddy
+    <span class="c-k">runner:</span> systemd
+    <span class="c-k">unit:</span> caddy.service</code></pre>
+        <pre class="code" data-pane="cli" hidden><code><span class="c-p">$</span> maestro validate deployment.yaml
+<span class="c-d">  → ok (2 hosts, 2 components)</span>
+
+<span class="c-p">$</span> maestro diff deployment.yaml
+<span class="c-d">  ~</span> api image: v1 → <span class="c-a">v2</span>
+<span class="c-d">  +</span> caddy (new)
+
+<span class="c-p">$</span> maestro apply deployment.yaml
+<span class="c-d">  apply web-01</span>
+<span class="c-d">    ✓ api      (4.1s)</span>
+<span class="c-d">    ✓ caddy    (0.8s)</span></code></pre>
+      </div>
+
+      <!-- install + first apply -->
+      <div class="codeblock">
+        <div class="codeblock-head">
+          <div class="tab is-static">~/ops $</div>
+          <button class="copy" type="button" data-copy="install" title="Copy">copy</button>
+        </div>
+        <pre class="code" data-pane="install"><code><span class="c-p">$</span> curl -fsSL playmaestro.cloud/install.sh \
+    | sudo bash
+<span class="c-d">  ✓ control plane installed</span>
+<span class="c-d">  ✓ listening on :7070</span>
+<span class="c-d">  → token: mst_a91f…  (keep this)</span>
+
+<span class="c-p">$</span> maestro apply deployment.yaml
+<span class="c-d">  validate </span> <span class="c-ok">ok</span>
+<span class="c-d">  diff     </span> <span class="c-a">2 changes</span>
+<span class="c-d">  apply    </span> <span class="c-ok">✓ web-01</span></code></pre>
+      </div>
+    </div>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#quickstart">Try it →</a>
+      <a class="btn btn-ghost" href="https://github.com/EnzinoBB/Maestro" rel="noopener">GitHub ↗</a>
+      <a class="btn btn-ghost" href="#how">Read the docs</a>
+    </div>
+
+    <!-- simple 3-box diagram -->
+    <div class="flow" aria-label="Architecture flow">
+      <div class="flow-box">
+        <div class="flow-label">agent</div>
+        <div class="flow-sub">claude code · cursor · copilot</div>
+      </div>
+      <div class="flow-arrow"><span>MCP</span></div>
+      <div class="flow-box flow-box-accent">
+        <div class="flow-label">control plane</div>
+        <div class="flow-sub">python · sqlite · ws hub</div>
+      </div>
+      <div class="flow-arrow"><span>WS</span></div>
+      <div class="flow-box">
+        <div class="flow-label">daemons</div>
+        <div class="flow-sub">host₁ · host₂ · host₃</div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ───────────── WHY ───────────── -->
+<section class="section" id="why">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-label">// why</div>
+      <h2 class="h2">Three reasons, no more.</h2>
+    </div>
+
+    <div class="cards-3">
+      <article class="card">
+        <div class="card-index">01</div>
+        <h3 class="card-h">Fewer tokens, more deploys.</h3>
+        <p class="card-p">
+          Agents don't shell every command. They speak MCP verbs —
+          <code>validate</code>, <code>diff</code>, <code>apply</code>, <code>rollback</code> —
+          and get back structured results. Simpler than Ansible on the common cases,
+          less chatty than a free-range LLM.
+        </p>
+      </article>
+      <article class="card">
+        <div class="card-index">02</div>
+        <h3 class="card-h">One YAML. No DSL.</h3>
+        <p class="card-p">
+          A readable schema, git-diffable, no Jinja where it isn't earned.
+          If you can read a Docker Compose file, you can read a Maestro deployment.
+        </p>
+      </article>
+      <article class="card">
+        <div class="card-index">03</div>
+        <h3 class="card-h">Bare-metal-native.</h3>
+        <p class="card-p">
+          A static Go daemon per host, wired up via systemd or launchd.
+          No cluster. No agent proliferation. The daemon is 12&nbsp;MB and has one job.
+        </p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── QUICKSTART ───────────── -->
+<section class="section section-alt" id="quickstart">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-label">// quickstart</div>
+      <h2 class="h2">Three commands.</h2>
+    </div>
+
+    <ol class="steps">
+      <li class="step">
+        <div class="step-num">01</div>
+        <div class="step-body">
+          <div class="step-title">Install the control plane</div>
+          <p class="step-desc">On a host you can reach from your laptop. SQLite-backed, listens on :7070.</p>
+          <div class="codeblock codeblock-inline">
+            <button class="copy" type="button" data-copy="qs1" title="Copy">copy</button>
+            <pre class="code"><code data-raw-id="qs1"><span class="c-p">$</span> curl -fsSL playmaestro.cloud/install.sh | sudo bash</code></pre>
+          </div>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="step-num">02</div>
+        <div class="step-body">
+          <div class="step-title">Install the daemon on each host</div>
+          <p class="step-desc">Copy the token from the control plane logs. Today this is a manual step — Layer 2 enrollment arrives in Phase 2.</p>
+          <div class="codeblock codeblock-inline">
+            <button class="copy" type="button" data-copy="qs2" title="Copy">copy</button>
+            <pre class="code"><code data-raw-id="qs2"><span class="c-p">$</span> curl -fsSL playmaestro.cloud/daemon.sh | sudo MAESTRO_TOKEN=mst_… bash</code></pre>
+          </div>
+        </div>
+      </li>
+
+      <li class="step">
+        <div class="step-num">03</div>
+        <div class="step-body">
+          <div class="step-title">Apply your first deployment</div>
+          <p class="step-desc">Write a YAML, then apply. <code>validate</code> and <code>diff</code> run automatically before apply.</p>
+          <div class="codeblock codeblock-inline">
+            <button class="copy" type="button" data-copy="qs3" title="Copy">copy</button>
+            <pre class="code"><code data-raw-id="qs3"><span class="c-p">$</span> maestro apply deployment.yaml</code></pre>
+          </div>
+        </div>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- ───────────── HOW ───────────── -->
+<section class="section" id="how">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-label">// how</div>
+      <h2 class="h2">validate → diff → apply → observe</h2>
+    </div>
+
+    <div class="how-grid">
+      <div class="how-copy">
+        <p>
+          Every change goes through the same four-step cycle. <strong>Validate</strong>
+          type-checks the YAML against the schema. <strong>Diff</strong> asks each
+          daemon what would change on its host and returns a structured plan.
+          <strong>Apply</strong> executes the plan. <strong>Observe</strong> streams
+          runner output back to the control plane.
+        </p>
+        <p>
+          Agents can stop at any stage. Most conversations end after <code>diff</code> —
+          the agent describes the plan, the human says "go", then <code>apply</code> runs.
+          Rollback uses the same pipeline with the previous spec as target.
+        </p>
+      </div>
+
+      <!-- block diagram -->
+      <div class="diagram" aria-label="Maestro data flow">
+        <div class="dg-row">
+          <div class="dg-box">
+            <div class="dg-title">deployment.yaml</div>
+            <div class="dg-sub">source of truth · git</div>
+          </div>
+          <div class="dg-arrow">▶</div>
+          <div class="dg-box dg-box-accent">
+            <div class="dg-title">control plane</div>
+            <div class="dg-sub">python · sqlite · mcp</div>
+          </div>
+        </div>
+        <div class="dg-between">
+          <div class="dg-line" aria-hidden="true"></div>
+          <div class="dg-verb">WebSocket · validate / diff / apply / observe</div>
+          <div class="dg-line" aria-hidden="true"></div>
+        </div>
+        <div class="dg-row dg-row-fan">
+          <div class="dg-box dg-box-sm">
+            <div class="dg-title">daemon</div>
+            <div class="dg-sub">host₁ · go</div>
+          </div>
+          <div class="dg-box dg-box-sm">
+            <div class="dg-title">daemon</div>
+            <div class="dg-sub">host₂ · go</div>
+          </div>
+          <div class="dg-box dg-box-sm">
+            <div class="dg-title">daemon</div>
+            <div class="dg-sub">host₃ · go</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── ARCH ───────────── -->
+<section class="section section-alt" id="arch">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-label">// arch</div>
+      <h2 class="h2">What's actually running.</h2>
+    </div>
+
+    <div class="arch-table" role="table">
+      <div class="arch-row" role="row">
+        <div class="arch-name" role="cell">Control plane</div>
+        <div class="arch-tech" role="cell"><code>python 3.11</code> · <code>fastapi</code> · <code>sqlite</code></div>
+        <div class="arch-desc" role="cell">Stateful. Owns the spec, the plan, and the event log. PostgreSQL in Phase&nbsp;3.</div>
+      </div>
+      <div class="arch-row" role="row">
+        <div class="arch-name" role="cell">WebSocket hub</div>
+        <div class="arch-tech" role="cell"><code>ws</code> · <code>mTLS in phase 3</code></div>
+        <div class="arch-desc" role="cell">Long-lived bidirectional channel between CP and each daemon. Today: bearer-token auth.</div>
+      </div>
+      <div class="arch-row" role="row">
+        <div class="arch-name" role="cell">MCP server</div>
+        <div class="arch-tech" role="cell"><code>model-context-protocol</code></div>
+        <div class="arch-desc" role="cell">Exposes the verb surface to LLM agents. Speaks JSON-RPC over stdio or SSE.</div>
+      </div>
+      <div class="arch-row" role="row">
+        <div class="arch-name" role="cell">Daemon</div>
+        <div class="arch-tech" role="cell"><code>go</code> · static binary · ~12&nbsp;MB</div>
+        <div class="arch-desc" role="cell">Runs on each managed host under systemd or launchd. No external dependencies.</div>
+      </div>
+      <div class="arch-row" role="row">
+        <div class="arch-name" role="cell">Runners</div>
+        <div class="arch-tech" role="cell"><code>docker</code> · <code>systemd</code> · <code>kubernetes</code> <span class="pill pill-info">phase 3</span></div>
+        <div class="arch-desc" role="cell">Per-component execution backends. Pick the right tool for the component, not the whole cluster.</div>
+      </div>
+    </div>
+
+    <div class="arch-cta">
+      <a class="link-accent" href="https://github.com/EnzinoBB/Maestro/blob/main/docs/architecture.md" rel="noopener">
+        Read the full architecture doc →
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────── AGENTS ───────────── -->
+<section class="section" id="agents">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-label">// agents</div>
+      <h2 class="h2">Built to be driven by an LLM.</h2>
+      <p class="section-lede">
+        Maestro exposes a finite verb surface over MCP. Agents don't shell every command —
+        they call the verbs, get structured results, and decide what to do next.
+        The bundled <code>SKILL.md</code> teaches them the conventions.
+      </p>
+    </div>
+
+    <div class="agents-grid">
+      <aside class="verbs">
+        <div class="verbs-label">MCP verbs</div>
+        <ul class="verb-list">
+          <li><span class="verb-arrow">›</span> maestro_validate</li>
+          <li><span class="verb-arrow">›</span> maestro_diff</li>
+          <li><span class="verb-arrow">›</span> maestro_apply</li>
+          <li><span class="verb-arrow">›</span> maestro_rollback</li>
+          <li><span class="verb-arrow">›</span> maestro_status</li>
+          <li><span class="verb-arrow">›</span> maestro_watch</li>
+          <li><span class="verb-arrow">›</span> maestro_logs</li>
+          <li><span class="verb-arrow">›</span> maestro_hosts</li>
+        </ul>
+        <a class="link-accent link-small" href="https://github.com/EnzinoBB/Maestro/blob/main/skill/SKILL.md" rel="noopener">
+          Read SKILL.md →
+        </a>
+      </aside>
+
+      <div class="panes">
+        <!-- Chat pane -->
+        <div class="pane pane-chat">
+          <div class="pane-head">
+            <span>chat</span>
+            <span class="pane-meta">agent ⟶ maestro-mcp</span>
+          </div>
+          <div class="chat">
+            <div class="chat-turn">
+              <div class="chat-role">you</div>
+              <div class="chat-msg">Deploy the api to staging.</div>
+            </div>
+            <div class="chat-turn">
+              <div class="chat-role">agent</div>
+              <div class="chat-msg">Reading <code>deployment.yaml</code>. I'll validate, then show you the diff before applying.</div>
+              <div class="chat-tools">
+                <div><span class="tool-verb">maestro_validate</span><span class="tool-arg">env="staging"</span> <span class="tool-ok">→ ok</span></div>
+                <div><span class="tool-verb">maestro_diff</span><span class="tool-arg">env="staging"</span> <span class="tool-ok">→ 2 changes</span></div>
+              </div>
+              <div class="chat-msg">
+                Two changes: bump <code>api</code> from <code>v1.4</code> to <code>v1.5</code>,
+                and add the new <code>caddy</code> component on both hosts. Shall I apply?
+              </div>
+            </div>
+            <div class="chat-turn">
+              <div class="chat-role">you</div>
+              <div class="chat-msg">Go.</div>
+            </div>
+            <div class="chat-turn">
+              <div class="chat-role">agent</div>
+              <div class="chat-tools">
+                <div><span class="tool-verb">maestro_apply</span><span class="tool-arg">env="staging"</span> <span class="tool-run">running</span></div>
+              </div>
+              <div class="chat-msg chat-msg-muted">Streaming from <code>maestro watch</code> →</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Watch pane -->
+        <div class="pane pane-watch">
+          <div class="pane-head">
+            <span>$ maestro watch --env staging</span>
+            <span class="pane-meta"><span class="dot-live"></span> live</span>
+          </div>
+          <pre class="watch"><code><span class="w-t">14:02:11</span> validate env=staging
+<span class="w-t">14:02:11</span>   <span class="c-ok">→ ok (2 hosts, 3 components)</span>
+<span class="w-t">14:02:12</span> diff env=staging
+<span class="w-t">14:02:12</span>   ~ api   v1.4 → <span class="c-a">v1.5</span>
+<span class="w-t">14:02:12</span>   + caddy <span class="c-ok">(new)</span>
+<span class="w-t">14:02:18</span> apply web-01
+<span class="w-t">14:02:21</span>   <span class="c-ok">✓ api    (3.1s)</span>
+<span class="w-t">14:02:23</span>   <span class="c-ok">✓ caddy  (1.4s)</span>
+<span class="w-t">14:02:23</span> apply web-02
+<span class="w-t">14:02:26</span>   <span class="c-ok">✓ api    (2.9s)</span>
+<span class="w-t">14:02:28</span>   <span class="c-ok">✓ caddy  (1.1s)</span>
+<span class="w-t">14:02:28</span> done (17s) · 2 hosts · 0 errors</code></pre>
+        </div>
+      </div>
+    </div>
+
+    <p class="agents-footnote">
+      Works with any MCP-capable client. Tested with Claude Code and Cursor.
+      JSON-RPC over stdio; SSE for streaming.
+    </p>
+  </div>
+</section>
+
+<!-- ───────────── ROADMAP ───────────── -->
+<section class="section section-alt" id="roadmap">
+  <div class="container">
+    <div class="section-head">
+      <div class="section-label">// roadmap</div>
+      <h2 class="h2">When it's ready.</h2>
+      <p class="section-lede">No dates. Phase 1 shipped as v0.1.0. Phase 2 is in progress on <code>main</code>.</p>
+    </div>
+
+    <div class="timeline">
+      <article class="phase phase-done">
+        <header class="phase-head">
+          <span class="phase-pill">✓ phase 1</span>
+          <h3 class="phase-title">Prototype</h3>
+          <span class="phase-ver">v0.1.0 · shipped</span>
+        </header>
+        <ul class="phase-list">
+          <li>Control plane + daemon + MCP server</li>
+          <li>YAML schema v1</li>
+          <li>Docker and systemd runners</li>
+          <li>One-command install</li>
+          <li>validate / diff / apply / rollback</li>
+        </ul>
+      </article>
+
+      <article class="phase phase-active">
+        <header class="phase-head">
+          <span class="phase-pill">◐ phase 2</span>
+          <h3 class="phase-title">Beta</h3>
+          <span class="phase-ver">in progress</span>
+        </header>
+        <ul class="phase-list">
+          <li>Token-based enrollment (Layer 2)</li>
+          <li>Auth + RBAC for CP</li>
+          <li>Structured observability</li>
+          <li>Secret references</li>
+          <li>CLI ergonomics pass</li>
+        </ul>
+      </article>
+
+      <article class="phase phase-future">
+        <header class="phase-head">
+          <span class="phase-pill">○ phase 3</span>
+          <h3 class="phase-title">Production</h3>
+          <span class="phase-ver">planned</span>
+        </header>
+        <ul class="phase-list">
+          <li>PostgreSQL backend</li>
+          <li>Kubernetes runner</li>
+          <li>mTLS CP ↔ daemon</li>
+          <li>HA control plane</li>
+          <li>Dedicated CLI binary</li>
+        </ul>
+      </article>
+    </div>
+
+    <p class="roadmap-note">
+      Honest caveat: today's enrollment flow is <em>"copy the token from the CP logs."</em>
+      Phase 2 fixes that. We won't pretend otherwise.
+    </p>
+  </div>
+</section>
+
+</main>
+
+<!-- ───────────── FOOTER ───────────── -->
+<footer class="footer" role="contentinfo">
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <div class="wordmark wordmark-lg">maestro<span class="accent">.</span></div>
+      <div class="footer-tag">
+        A YAML, a Python orchestrator, a Go daemon per host. Stop.
+      </div>
+    </div>
+
+    <div class="footer-col">
+      <div class="footer-h">Docs</div>
+      <a href="#quickstart">Quickstart</a>
+      <a href="https://github.com/EnzinoBB/Maestro/blob/main/docs/yaml-schema.md" rel="noopener">YAML schema</a>
+      <a href="https://github.com/EnzinoBB/Maestro/blob/main/docs/architecture.md" rel="noopener">Architecture</a>
+      <a href="https://github.com/EnzinoBB/Maestro/blob/main/skill/SKILL.md" rel="noopener">SKILL.md</a>
+    </div>
+
+    <div class="footer-col">
+      <div class="footer-h">Project</div>
+      <a href="https://github.com/EnzinoBB/Maestro" rel="noopener">GitHub</a>
+      <a href="https://github.com/EnzinoBB/Maestro/issues" rel="noopener">Issues</a>
+      <a href="https://github.com/EnzinoBB/Maestro/releases" rel="noopener">Releases</a>
+      <a href="https://github.com/EnzinoBB/Maestro/blob/main/LICENSE" rel="noopener">License</a>
+    </div>
+
+    <div class="footer-col">
+      <div class="footer-h">Host</div>
+      <a href="https://playmaestro.cloud" rel="noopener">playmaestro.cloud</a>
+      <div class="footer-sub">Reference instance.<br/>Self-host if you prefer.</div>
+    </div>
+
+    <div class="footer-col">
+      <div class="footer-h">Meta</div>
+      <div class="footer-sub">Apache-2.0</div>
+      <div class="footer-sub">No trackers</div>
+      <div class="footer-sub">Static site</div>
+    </div>
+  </div>
+  <div class="container footer-bottom">
+    <span><span class="c-p">$</span> maestro --version</span>
+    <span class="footer-ver">0.1.0</span>
+  </div>
+</footer>
+
+<script src="site.js" defer></script>
+</body>
+</html>
