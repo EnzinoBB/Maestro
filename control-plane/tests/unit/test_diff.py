@@ -7,6 +7,42 @@ def test_hash_stable():
     assert component_hash(a) == component_hash(b)
 
 
+def test_hash_changes_when_config_archive_content_hash_changes():
+    # component_hash must react to config_archives content changes: without
+    # this, a content-only deploy would be misclassified as "unchanged".
+    base = {
+        "source": {"type": "docker", "image": "caddy"},
+        "run": {"type": "docker"},
+        "config_archives": [
+            {"dest": "/srv", "strategy": "atomic_symlink",
+             "mode": 0o755, "tar_b64": "AAA", "content_hash": "aaa"}
+        ],
+    }
+    bumped = dict(base, config_archives=[
+        {"dest": "/srv", "strategy": "atomic_symlink",
+         "mode": 0o755, "tar_b64": "AAA", "content_hash": "bbb"}
+    ])
+    assert component_hash(base) != component_hash(bumped)
+
+
+def test_hash_ignores_tar_b64_blob_if_content_hash_identical():
+    # If two payloads share content_hash, the tar_b64 blob (which may differ
+    # in representation) must NOT affect the hash.
+    base = {
+        "source": {"type": "docker", "image": "caddy"},
+        "run": {"type": "docker"},
+        "config_archives": [
+            {"dest": "/srv", "strategy": "atomic_symlink",
+             "mode": 0o755, "tar_b64": "xxxxxx", "content_hash": "aaa"}
+        ],
+    }
+    other = dict(base, config_archives=[
+        {"dest": "/srv", "strategy": "atomic_symlink",
+         "mode": 0o755, "tar_b64": "yyyyyy", "content_hash": "aaa"}
+    ])
+    assert component_hash(base) == component_hash(other)
+
+
 def test_create_update_unchanged_remove():
     desired = {
         ("h1", "a"): {"source": {"x": 1}},          # new
