@@ -69,8 +69,17 @@ class ConfigTemplate(_Base):
     mode: int = 0o640
 
 
+class ConfigFile(_Base):
+    source: str
+    dest: str
+    strategy: Literal["overwrite", "atomic", "atomic_symlink"] = "atomic_symlink"
+    mode: int = 0o755
+    owner: str | None = None
+
+
 class ConfigSpec(_Base):
     templates: list[ConfigTemplate] = Field(default_factory=list)
+    files: list[ConfigFile] = Field(default_factory=list)
     vars: dict[str, Any] = Field(default_factory=dict)
     secrets: dict[str, str] = Field(default_factory=dict)  # fase 2+, ignorati in 1
 

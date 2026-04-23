@@ -104,3 +104,67 @@ deployment:
 """
     spec = parse_deployment(yaml_text)
     assert spec.components["c"].reload_triggers.content == "hot"
+
+
+def test_config_files_parses_with_all_strategies():
+    from app.config.loader import parse_deployment
+    yaml_text = """
+api_version: maestro/v1
+project: t
+hosts:
+  h: {type: linux, address: 1.2.3.4}
+components:
+  c:
+    source: {type: docker, image: nginx}
+    run: {type: docker}
+    config:
+      files:
+        - source: ./site
+          dest: /var/www/site
+          strategy: atomic_symlink
+          mode: 0755
+        - source: ./singlefile.txt
+          dest: /etc/singlefile
+          strategy: overwrite
+deployment:
+  - host: h
+    components: [c]
+"""
+    spec = parse_deployment(yaml_text)
+    files = spec.components["c"].config.files
+    assert len(files) == 2
+    assert files[0].source == "./site"
+    assert files[0].dest == "/var/www/site"
+    assert files[0].strategy == "atomic_symlink"
+    assert files[0].mode == 493  # 0755 octal in decimal
+    assert files[1].strategy == "overwrite"
+
+
+def test_config_files_strategy_must_be_valid():
+    from app.config.loader import parse_deployment, LoaderError
+    yaml_text = """
+api_version: maestro/v1
+project: t
+hosts:
+  h: {type: linux, address: 1.2.3.4}
+components:
+  c:
+    source: {type: docker, image: nginx}
+    run: {type: docker}
+    config:
+      files:
+        - source: ./x
+          dest: /x
+          strategy: bogus
+deployment:
+  - host: h
+    components: [c]
+"""
+    try:
+        parse_deployment(yaml_text)
+    except LoaderError as e:
+        # Check error details in e.errors list
+        error_str = str(e.errors).lower()
+        assert "strategy" in error_str or "bogus" in error_str or "literal" in error_str, f"Expected strategy/bogus error, got {e.errors}"
+        return
+    raise AssertionError("expected LoaderError")
