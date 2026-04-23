@@ -36,7 +36,14 @@ async def _read_apply_body(request: Request) -> tuple[str, dict[str, str], dict[
         fs = data.get("files_store") or {}
         if not isinstance(ts, dict) or not isinstance(fs, dict):
             raise HTTPException(status_code=400, detail="template_store and files_store must be objects")
-        return str(data["yaml_text"]), {k: str(v) for k, v in ts.items()}, {k: str(v) for k, v in fs.items()}
+        for name, store in (("template_store", ts), ("files_store", fs)):
+            for k, v in store.items():
+                if not isinstance(v, str):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{name} values must be strings, got {type(v).__name__} for key '{k}'",
+                    )
+        return str(data["yaml_text"]), dict(ts), dict(fs)
     return raw.decode("utf-8", errors="replace"), {}, {}
 
 
