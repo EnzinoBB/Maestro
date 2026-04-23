@@ -1,7 +1,7 @@
 # playmaestro.cloud — Static Website Deploy Design
 
 **Date:** 2026-04-23
-**Status:** Approved (brainstorming phase complete, pending implementation plan)
+**Status:** Implemented (2026-04-23). Live at `https://www.playmaestro.cloud/`.
 **Scope:** Deploy the static website in `website/` (HTML/CSS/JS, ~50 KB) to host1 (109.199.123.26) at `https://www.playmaestro.cloud/`, using Maestro itself for the deploy-and-reload loop and Caddy-in-Docker for web serving plus automatic TLS. Manual host preparation is kept to the bare minimum (Docker group membership + firewall); everything repeatable goes through Maestro's control plane → daemon path.
 
 This spec also formalizes a new generic primitive in the Maestro schema — `config.files` — that emerged from this use case but is broadly reusable for any component that needs verbatim file artifacts mounted into a container.

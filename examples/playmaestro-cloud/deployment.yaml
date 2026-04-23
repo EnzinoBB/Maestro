@@ -42,7 +42,7 @@ components:
         - "/home/agent/playmaestro/caddy/data:/data"
         - "/home/agent/playmaestro/caddy/Caddyfile:/etc/caddy/Caddyfile:ro"
       restart: unless-stopped
-    deploy_mode: hot
+    deploy_mode: cold
     reload_triggers:
       code: cold
       config: hot

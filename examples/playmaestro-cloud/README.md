@@ -1,9 +1,19 @@
 # playmaestro.cloud — Reference deploy
 
+**Live:** https://www.playmaestro.cloud/ — verified 2026-04-23.
+
 Deploys the root-level `website/` directory as a static site at
 `https://www.playmaestro.cloud/`, served by Caddy-in-Docker with automatic
 Let's Encrypt HTTPS. This example exercises the `config.files` primitive
-(atomic_symlink strategy) and the `reload_triggers.content: hot` key.
+(atomic_symlink strategy) and is the reference Phase 1 deploy for a
+content-first (no-build, no-systemd) component.
+
+Phase 1 notes:
+- `deploy_mode: cold` is required (the `hot` mode is declared in the schema
+  but the Phase 1 engine rejects it; atomic semantics for content come from
+  `config.files[].strategy: atomic_symlink`, not from `deploy_mode`).
+- `reload_triggers.content` is accepted by the schema (added in this branch)
+  but not yet consumed by the daemon's phase dispatcher; it's a Phase 2 hook.
 
 ## One-time host preparation
 
