@@ -39,7 +39,7 @@ type ConfigFile struct {
 // governing how it gets materialized (overwrite, atomic, atomic_symlink).
 type ConfigArchive struct {
 	Dest        string `json:"dest"`
-	Strategy    string `json:"strategy"` // "overwrite" | "atomic" | "atomic_symlink"
+	Strategy    string `json:"strategy"` // "overwrite" (non-atomic) | "atomic" (brief unavailability window) | "atomic_symlink" (zero-downtime)
 	Mode        int    `json:"mode"`
 	TarB64      string `json:"tar_b64"`
 	ContentHash string `json:"content_hash"` // sha256 hex of tar bytes

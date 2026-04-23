@@ -32,6 +32,10 @@ func MaterializeArchive(arc ConfigArchive) error {
 	case "overwrite":
 		return extractTar(tarBytes, arc.Dest, os.FileMode(effectiveMode(arc.Mode)))
 	case "atomic":
+		// NOTE: "atomic" replaces dest via RemoveAll+Rename. There is a brief
+		// window between the RemoveAll and the Rename where dest does not exist;
+		// concurrent readers during that window will see ENOENT. For zero-
+		// downtime content swap use "atomic_symlink" instead.
 		tmp := arc.Dest + ".tmp"
 		_ = os.RemoveAll(tmp)
 		if err := extractTar(tarBytes, tmp, os.FileMode(effectiveMode(arc.Mode))); err != nil {
@@ -127,7 +131,9 @@ func extractTar(tarBytes []byte, dest string, mode os.FileMode) error {
 				_ = f.Close()
 				return err
 			}
-			_ = f.Close()
+			if err := f.Close(); err != nil {
+				return fmt.Errorf("close %s: %w", target, err)
+			}
 		default:
 			// skip symlinks and other types for safety in Phase 1
 		}
