@@ -44,7 +44,7 @@ func TestUnitName(t *testing.T) {
 
 func TestWriteConfigFilesBadBase64(t *testing.T) {
 	dir := t.TempDir()
-	err := writeConfigFiles(dir, []ConfigFile{{Dest: "conf.txt", Mode: 0o600, ContentB64: "!!!not base64!!!"}})
+	err := WriteConfigFiles(dir, []ConfigFile{{Dest: "conf.txt", Mode: 0o600, ContentB64: "!!!not base64!!!"}})
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), "decode"))
 }

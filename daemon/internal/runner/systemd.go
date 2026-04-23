@@ -3,7 +3,6 @@ package runner
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -156,32 +155,6 @@ func RenderUnit(d *ComponentDeploy) (string, error) {
 	return out.String(), nil
 }
 
-func writeConfigFiles(baseDir string, files []ConfigFile) error {
-	for _, f := range files {
-		dest := f.Dest
-		if dest == "" {
-			continue
-		}
-		if !filepath.IsAbs(dest) {
-			dest = filepath.Join(baseDir, dest)
-		}
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-			return fmt.Errorf("mkdir %s: %w", filepath.Dir(dest), err)
-		}
-		data, err := base64.StdEncoding.DecodeString(f.ContentB64)
-		if err != nil {
-			return fmt.Errorf("decode %s: %w", dest, err)
-		}
-		mode := os.FileMode(f.Mode)
-		if mode == 0 {
-			mode = 0o640
-		}
-		if err := os.WriteFile(dest, data, mode); err != nil {
-			return fmt.Errorf("write %s: %w", dest, err)
-		}
-	}
-	return nil
-}
 
 func (r *SystemdRunner) Deploy(ctx context.Context, d *ComponentDeploy) (*DeployResult, error) {
 	t0 := time.Now()
@@ -196,7 +169,7 @@ func (r *SystemdRunner) Deploy(ctx context.Context, d *ComponentDeploy) (*Deploy
 
 	// Write config files
 	cp := time.Now()
-	if err := writeConfigFiles(dir, d.ConfigFiles); err != nil {
+	if err := WriteConfigFiles(dir, d.ConfigFiles); err != nil {
 		phases = append(phases, PhaseResult{Name: "config", OK: false, DurationMS: time.Since(cp).Milliseconds(), Detail: err.Error()})
 		return &DeployResult{OK: false, ComponentID: d.ComponentID, Phases: phases,
 			Error: &ErrorInfo{Code: "config_error", Phase: "config", Message: err.Error()}}, nil
