@@ -174,6 +174,14 @@ func (r *SystemdRunner) Deploy(ctx context.Context, d *ComponentDeploy) (*Deploy
 		return &DeployResult{OK: false, ComponentID: d.ComponentID, Phases: phases,
 			Error: &ErrorInfo{Code: "config_error", Phase: "config", Message: err.Error()}}, nil
 	}
+	for _, arc := range d.ConfigArchives {
+		if err := MaterializeArchive(arc); err != nil {
+			phases = append(phases, PhaseResult{Name: "config", OK: false,
+				DurationMS: time.Since(cp).Milliseconds(), Detail: err.Error()})
+			return &DeployResult{OK: false, ComponentID: d.ComponentID, Phases: phases,
+				Error: &ErrorInfo{Code: "config_error", Phase: "config", Message: err.Error()}}, nil
+		}
+	}
 	phases = append(phases, PhaseResult{Name: "config", OK: true, DurationMS: time.Since(cp).Milliseconds()})
 
 	// Render and write unit file
