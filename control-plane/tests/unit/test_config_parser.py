@@ -84,3 +84,23 @@ deployment:
     spec = parse_deployment(yml)
     with pytest.raises(RenderError):
         render_component(spec, "a", "h1")
+
+
+def test_reload_triggers_accepts_content_key():
+    from app.config.loader import parse_deployment
+    yaml_text = """
+api_version: maestro/v1
+project: t
+hosts:
+  h: {type: linux, address: 1.2.3.4}
+components:
+  c:
+    source: {type: docker, image: nginx}
+    run: {type: docker}
+    reload_triggers: {code: cold, config: hot, content: hot}
+deployment:
+  - host: h
+    components: [c]
+"""
+    spec = parse_deployment(yaml_text)
+    assert spec.components["c"].reload_triggers.content == "hot"

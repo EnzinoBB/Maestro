@@ -139,6 +139,7 @@ class ReloadTriggers(_Base):
     code: Literal["hot", "cold"] = "cold"
     config: Literal["hot", "cold"] = "cold"
     dependencies: Literal["hot", "cold"] = "cold"
+    content: Literal["hot", "cold"] = "cold"
 
 
 class ComponentSpec(_Base):
