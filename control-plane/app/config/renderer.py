@@ -201,6 +201,7 @@ def render_component(
     host_id: str,
     *,
     template_store: dict[str, str] | None = None,
+    files_store: dict[str, str] | None = None,
 ) -> RenderedComponent:
     if component_id not in spec.components:
         raise RenderError(f"component '{component_id}' not found")
@@ -251,8 +252,12 @@ def render_component(
     # config archives (files)
     config_archives: list[RenderedConfigArchive] = []
     for entry in component.config.files:
-        source_path = _render_str(entry.source, ctx)
-        tar_bytes, digest = _bundle_path_to_tar(source_path)
+        source_key = _render_str(entry.source, ctx)
+        if files_store and source_key in files_store:
+            tar_bytes = base64.b64decode(files_store[source_key])
+            digest = hashlib.sha256(tar_bytes).hexdigest()
+        else:
+            tar_bytes, digest = _bundle_path_to_tar(source_key)
         config_archives.append(RenderedConfigArchive(
             dest=_render_str(entry.dest, ctx),
             strategy=entry.strategy,

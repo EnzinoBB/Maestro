@@ -17,8 +17,11 @@ def _errors_payload(code: str, message: str, errors: list[dict] | None = None) -
     return {"ok": False, "error": {"code": code, "message": message, "errors": errors or []}}
 
 
-async def _read_yaml_body(request: Request) -> str:
-    """Accept JSON {yaml_text: ...} or raw yaml/text body."""
+async def _read_apply_body(request: Request) -> tuple[str, dict[str, str], dict[str, str]]:
+    """Return (yaml_text, template_store, files_store).
+
+    Accepts JSON {yaml_text: ..., template_store?: {name:content}, files_store?: {source:tar_b64}}
+    or raw yaml/text body (with empty stores)."""
     ct = (request.headers.get("content-type") or "").split(";")[0].strip()
     raw = await request.body()
     if ct == "application/json":
@@ -29,8 +32,19 @@ async def _read_yaml_body(request: Request) -> str:
             raise HTTPException(status_code=400, detail="invalid JSON body")
         if not isinstance(data, dict) or "yaml_text" not in data:
             raise HTTPException(status_code=400, detail="JSON body must include 'yaml_text'")
-        return str(data["yaml_text"])
-    return raw.decode("utf-8", errors="replace")
+        ts = data.get("template_store") or {}
+        fs = data.get("files_store") or {}
+        if not isinstance(ts, dict) or not isinstance(fs, dict):
+            raise HTTPException(status_code=400, detail="template_store and files_store must be objects")
+        return str(data["yaml_text"]), {k: str(v) for k, v in ts.items()}, {k: str(v) for k, v in fs.items()}
+    return raw.decode("utf-8", errors="replace"), {}, {}
+
+
+async def _read_yaml_body(request: Request) -> str:
+    """Accept JSON {yaml_text: ...} or raw yaml/text body.
+    Kept as alias for backward compatibility with /api/config/validate and /api/config/diff."""
+    y, _, _ = await _read_apply_body(request)
+    return y
 
 
 @router.get("/healthz")
@@ -94,7 +108,7 @@ async def post_diff(request: Request):
 
 @router.post("/config/apply")
 async def post_apply(request: Request):
-    yaml_text = await _read_yaml_body(request)
+    yaml_text, template_store, files_store = await _read_apply_body(request)
     dry_run = request.query_params.get("dry_run", "false").lower() == "true"
     try:
         spec = parse_deployment(yaml_text)
@@ -107,7 +121,8 @@ async def post_apply(request: Request):
     storage = request.app.state.storage
     if not dry_run:
         await storage.save_config(spec.project, yaml_text)
-    result = await engine.apply(spec, dry_run=dry_run)
+    result = await engine.apply(spec, dry_run=dry_run,
+                                template_store=template_store, files_store=files_store)
     if not dry_run:
         await storage.record_deploy(spec.project, result.ok, result.to_dict())
     return result.to_dict()
