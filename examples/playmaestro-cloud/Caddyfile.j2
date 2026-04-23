@@ -1,0 +1,15 @@
+{{ vars.primary_host }} {
+    root * /srv-root/current
+    file_server
+    encode gzip
+
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+}
+
+{{ vars.apex_host }} {
+    redir https://{{ vars.primary_host }}{uri} permanent
+}
