@@ -8,17 +8,18 @@ import (
 // ComponentDeploy is the fully-prepared spec sent by the control plane.
 // Only the fields relevant for Phase 1 are represented.
 type ComponentDeploy struct {
-	ComponentID string                 `json:"component_id"`
-	TargetHash  string                 `json:"target_hash"`
-	DeployMode  string                 `json:"deploy_mode"`
-	Source      map[string]any         `json:"source"`
-	BuildSteps  []BuildStep            `json:"build_steps"`
-	ConfigFiles []ConfigFile           `json:"config_files"`
-	Run         map[string]any         `json:"run"`
-	Healthcheck map[string]any         `json:"healthcheck"`
-	Secrets     map[string]string      `json:"secrets"`
-	TimeoutSec  int                    `json:"timeout_sec"`
-	Extra       map[string]any         `json:"-"`
+	ComponentID    string                 `json:"component_id"`
+	TargetHash     string                 `json:"target_hash"`
+	DeployMode     string                 `json:"deploy_mode"`
+	Source         map[string]any         `json:"source"`
+	BuildSteps     []BuildStep            `json:"build_steps"`
+	ConfigFiles    []ConfigFile           `json:"config_files"`
+	ConfigArchives []ConfigArchive        `json:"config_archives"`
+	Run            map[string]any         `json:"run"`
+	Healthcheck    map[string]any         `json:"healthcheck"`
+	Secrets        map[string]string      `json:"secrets"`
+	TimeoutSec     int                    `json:"timeout_sec"`
+	Extra          map[string]any         `json:"-"`
 }
 
 type BuildStep struct {
@@ -32,6 +33,16 @@ type ConfigFile struct {
 	Dest       string `json:"dest"`
 	Mode       int    `json:"mode"`
 	ContentB64 string `json:"content_b64"`
+}
+
+// ConfigArchive is a tar archive destined for a host path, with a strategy
+// governing how it gets materialized (overwrite, atomic, atomic_symlink).
+type ConfigArchive struct {
+	Dest        string `json:"dest"`
+	Strategy    string `json:"strategy"` // "overwrite" | "atomic" | "atomic_symlink"
+	Mode        int    `json:"mode"`
+	TarB64      string `json:"tar_b64"`
+	ContentHash string `json:"content_hash"` // sha256 hex of tar bytes
 }
 
 type DeployResult struct {
