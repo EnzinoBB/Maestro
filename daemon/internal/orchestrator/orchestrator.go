@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/maestro-project/maestro-daemon/internal/metrics"
 	"github.com/maestro-project/maestro-daemon/internal/runner"
 	"github.com/maestro-project/maestro-daemon/internal/state"
 	"github.com/maestro-project/maestro-daemon/internal/ws"
@@ -398,19 +399,55 @@ func (o *Orchestrator) markHealth(ctx context.Context, id string, ok bool) {
 }
 
 // PublishMetrics sends a periodic event.metrics. Meant to be called from a ticker.
+//
+// Payload contract (v1, see CP M2 spec):
+//
+//	{
+//	  "ts":      RFC3339 timestamp,
+//	  "samples": [{scope, scope_id, metric, value}, ...],
+//	}
+//
+// host_id is intentionally omitted from the payload — the CP fills it in
+// from the WS connection's registered host_id (see metrics.handler).
+// scope_id for host-scoped samples is left empty for the same reason.
 func (o *Orchestrator) PublishMetrics(ctx context.Context, client *ws.Client) error {
 	comps, err := o.Store.List(ctx)
 	if err != nil {
 		return err
 	}
-	entries := []map[string]any{}
-	for _, c := range comps {
-		entry := map[string]any{"id": c.ID, "status": c.Status}
-		entries = append(entries, entry)
+
+	samples := []map[string]any{}
+
+	// Host samples (CPU%, RAM%, load1).
+	for _, hs := range metrics.CollectHost(ctx) {
+		samples = append(samples, map[string]any{
+			"scope":    "host",
+			"scope_id": "",
+			"metric":   hs.Metric,
+			"value":    hs.Value,
+		})
 	}
+
+	// Per-component healthcheck liveness: 1 if last hc OK, 0 if failed,
+	// omitted entirely if no healthcheck has run yet.
+	for _, c := range comps {
+		if c.LastHCAt != nil {
+			v := 0.0
+			if c.LastHCOK {
+				v = 1.0
+			}
+			samples = append(samples, map[string]any{
+				"scope":    "component",
+				"scope_id": c.ID,
+				"metric":   "healthcheck_ok",
+				"value":    v,
+			})
+		}
+	}
+
 	payload := map[string]any{
-		"ts":         time.Now().UTC().Format(time.RFC3339),
-		"components": entries,
+		"ts":      time.Now().UTC().Format(time.RFC3339),
+		"samples": samples,
 	}
 	return client.SendEvent(ws.TypeEventMetrics, payload)
 }

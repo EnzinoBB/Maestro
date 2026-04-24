@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/maestro-project/maestro-daemon/internal/config"
-	"github.com/maestro-project/maestro-daemon/internal/metrics"
+	"github.com/maestro-project/maestro-daemon/internal/metricsrunner"
 	"github.com/maestro-project/maestro-daemon/internal/orchestrator"
 	"github.com/maestro-project/maestro-daemon/internal/runner"
 	"github.com/maestro-project/maestro-daemon/internal/state"
@@ -87,7 +87,7 @@ func main() {
 		cancel()
 	}()
 
-	go metrics.Run(ctx, time.Duration(cfg.MetricsIntervS)*time.Second, orch, client)
+	go metricsrunner.Run(ctx, time.Duration(cfg.MetricsIntervS)*time.Second, orch, client)
 
 	if err := client.Run(ctx); err != nil && err != context.Canceled {
 		log.Error("ws client terminated", "err", err)
