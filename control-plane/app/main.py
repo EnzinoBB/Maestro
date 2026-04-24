@@ -23,6 +23,7 @@ from .api.router import router as api_router
 from .api.ui import router as ui_router
 from .api.install import router as install_router
 from .api.deploys import router as deploys_router
+from .api.metrics import router as metrics_router
 
 
 logging.basicConfig(
@@ -71,6 +72,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Maestro Control Plane", version="0.1.0", lifespan=lifespan)
     app.include_router(api_router)
     app.include_router(deploys_router)
+    app.include_router(metrics_router)
     app.include_router(ui_router)
     app.include_router(install_router)
 
