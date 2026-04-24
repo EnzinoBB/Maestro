@@ -429,7 +429,10 @@ func (o *Orchestrator) PublishMetrics(ctx context.Context, client *ws.Client) er
 	}
 
 	// Per-component healthcheck liveness: 1 if last hc OK, 0 if failed,
-	// omitted entirely if no healthcheck has run yet.
+	// omitted entirely if no healthcheck has run yet. Also build a
+	// name→id map for the docker stats collector (container naming
+	// convention is "maestro-<component_id>").
+	nameToCid := map[string]string{}
 	for _, c := range comps {
 		if c.LastHCAt != nil {
 			v := 0.0
@@ -443,6 +446,18 @@ func (o *Orchestrator) PublishMetrics(ctx context.Context, client *ws.Client) er
 				"value":    v,
 			})
 		}
+		nameToCid["maestro-"+c.ID] = c.ID
+	}
+
+	// Per-container CPU + RAM (best-effort; returns nil if docker
+	// is unavailable, no samples emitted in that case).
+	for _, ds := range metrics.CollectDocker(ctx, nameToCid) {
+		samples = append(samples, map[string]any{
+			"scope":    ds.Scope,
+			"scope_id": ds.ScopeID,
+			"metric":   ds.Metric,
+			"value":    ds.Value,
+		})
 	}
 
 	payload := map[string]any{
