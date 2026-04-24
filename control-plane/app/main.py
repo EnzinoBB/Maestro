@@ -19,6 +19,7 @@ from .storage_deploys import DeployRepository
 from .storage_metrics import MetricsRepository
 from .metrics.handler import make_metrics_event_handler
 from .metrics.retention import retention_loop
+from .ws.ui_bus import UIEventBus
 from .api.router import router as api_router
 from .api.ui import router as ui_router
 from .api.install import router as install_router
@@ -45,11 +46,16 @@ async def lifespan(app: FastAPI):
     # Persist incoming event.metrics into the metrics store.
     hub.add_event_handler(make_metrics_event_handler(metrics_repo))
 
+    # Fan out Hub events to browser WS clients.
+    ui_bus = UIEventBus()
+    hub.add_event_handler(ui_bus.as_hub_handler())
+
     app.state.storage = storage
     app.state.deploy_repo = DeployRepository(db_path)
     app.state.metrics_repo = metrics_repo
     app.state.hub = hub
     app.state.engine = engine
+    app.state.ui_bus = ui_bus
 
     interval = int(os.environ.get("MAESTRO_METRICS_RETENTION_INTERVAL_S", "600"))
     retention_task = asyncio.create_task(retention_loop(
@@ -91,6 +97,51 @@ def create_app() -> FastAPI:
             ws, host_id=host_id, token=token or None,
             expected_token=expected,
         )
+
+    @app.websocket("/ws/ui")
+    async def ws_ui(ws: WebSocket):
+        import json as _json
+        await ws.accept()
+
+        await ws.send_text(_json.dumps({
+            "type": "hello",
+            "server_version": app.version,
+        }))
+
+        queue: asyncio.Queue = asyncio.Queue(maxsize=256)
+
+        def _on_frame(frame: dict) -> None:
+            try:
+                queue.put_nowait(frame)
+            except asyncio.QueueFull:
+                try:
+                    queue.get_nowait()
+                    queue.put_nowait(frame)
+                except Exception:
+                    pass
+
+        unsub = app.state.ui_bus.subscribe(_on_frame)
+
+        async def sender():
+            while True:
+                frame = await queue.get()
+                await ws.send_text(_json.dumps(frame))
+
+        send_task = asyncio.create_task(sender())
+        try:
+            while True:
+                raw = await ws.receive_text()
+                try:
+                    data = _json.loads(raw)
+                except Exception:
+                    continue
+                if data.get("type") == "ping":
+                    await ws.send_text(_json.dumps({"type": "pong"}))
+        except Exception:
+            pass
+        finally:
+            unsub()
+            send_task.cancel()
 
     # Static web: prefer the new SPA bundle (web-ui/dist) when present;
     # fall back to the legacy HTMX dashboard (control-plane/web) during transition.
