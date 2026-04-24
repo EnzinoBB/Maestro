@@ -59,6 +59,35 @@ async def test_handler_ignores_non_metrics_messages():
 
 
 @pytest.mark.asyncio
+async def test_hub_routes_event_metrics_into_repository_via_emit():
+    """Simulate a daemon-originated event going through hub._emit()."""
+    from app.ws.hub import Hub
+
+    with tempfile.TemporaryDirectory() as td:
+        path = os.path.join(td, "t.db")
+        await Storage(path).init()
+        repo = MetricsRepository(path)
+        hub = Hub()
+        hub.add_event_handler(make_metrics_event_handler(repo))
+
+        msg = make_message(T_EV_METRICS, {
+            "ts": "2026-04-24T11:00:00Z",
+            "host_id": "host1",
+            "samples": [
+                {"scope": "host", "scope_id": "host1", "metric": "ram_percent", "value": 73.2},
+            ],
+        })
+        await hub._emit("host1", msg)
+
+        rows = await repo.range(
+            scope="host", scope_id="host1", metric="ram_percent",
+            from_ts=0, to_ts=99999999999,
+        )
+        assert len(rows) == 1
+        assert rows[0][1] == 73.2
+
+
+@pytest.mark.asyncio
 async def test_handler_uses_origin_host_id_when_payload_lacks_one():
     with tempfile.TemporaryDirectory() as td:
         path = os.path.join(td, "t.db")
