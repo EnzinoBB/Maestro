@@ -142,3 +142,82 @@ async def test_delete_nonexistent_raises():
         repo = DeployRepository(path)
         with pytest.raises(DeployNotFound):
             await repo.delete("nope")
+
+
+@pytest.mark.asyncio
+async def test_append_version_monotonic_per_deploy():
+    with tempfile.TemporaryDirectory() as td:
+        path = os.path.join(td, "t.db")
+        await Storage(path).init()
+        repo = DeployRepository(path)
+
+        d = await repo.create("app", owner_user_id="singleuser")
+        v1 = await repo.append_version(
+            d["id"], yaml_text="yaml-v1", components_hash="h1",
+            applied_by_user_id="singleuser", result_json={"ok": True},
+        )
+        v2 = await repo.append_version(
+            d["id"], yaml_text="yaml-v2", components_hash="h2",
+            applied_by_user_id="singleuser", result_json={"ok": True},
+        )
+
+        assert v1["version_n"] == 1
+        assert v2["version_n"] == 2
+        assert v1["parent_version_id"] is None
+        assert v2["parent_version_id"] == v1["id"]
+
+        refreshed = await repo.get(d["id"])
+        assert refreshed["current_version"] == 2
+
+
+@pytest.mark.asyncio
+async def test_append_version_kind_rollback_links_to_explicit_parent():
+    with tempfile.TemporaryDirectory() as td:
+        path = os.path.join(td, "t.db")
+        await Storage(path).init()
+        repo = DeployRepository(path)
+
+        d = await repo.create("app", owner_user_id="singleuser")
+        v1 = await repo.append_version(
+            d["id"], yaml_text="yaml-v1", components_hash="h1",
+            applied_by_user_id="singleuser", result_json=None,
+        )
+        await repo.append_version(
+            d["id"], yaml_text="yaml-v2", components_hash="h2",
+            applied_by_user_id="singleuser", result_json=None,
+        )
+        v3 = await repo.append_version(
+            d["id"], yaml_text="yaml-v1", components_hash="h1",
+            applied_by_user_id="singleuser", result_json=None,
+            kind="rollback", parent_version_id=v1["id"],
+        )
+
+        assert v3["version_n"] == 3
+        assert v3["kind"] == "rollback"
+        assert v3["parent_version_id"] == v1["id"]
+
+        versions = await repo.list_versions(d["id"])
+        assert [v["version_n"] for v in versions] == [1, 2, 3]
+
+
+@pytest.mark.asyncio
+async def test_versions_isolated_between_deploys():
+    with tempfile.TemporaryDirectory() as td:
+        path = os.path.join(td, "t.db")
+        await Storage(path).init()
+        repo = DeployRepository(path)
+
+        a = await repo.create("a", owner_user_id="singleuser")
+        b = await repo.create("b", owner_user_id="singleuser")
+
+        await repo.append_version(a["id"], yaml_text="y", components_hash="h",
+                                  applied_by_user_id="singleuser", result_json=None)
+        await repo.append_version(a["id"], yaml_text="y", components_hash="h",
+                                  applied_by_user_id="singleuser", result_json=None)
+        await repo.append_version(b["id"], yaml_text="y", components_hash="h",
+                                  applied_by_user_id="singleuser", result_json=None)
+
+        va = await repo.list_versions(a["id"])
+        vb = await repo.list_versions(b["id"])
+        assert [v["version_n"] for v in va] == [1, 2]
+        assert [v["version_n"] for v in vb] == [1]
