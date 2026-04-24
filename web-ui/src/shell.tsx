@@ -3,6 +3,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { Icons, StatusDot } from "./primitives";
 import { useHosts } from "./api/client";
 import { useRealtime } from "./hooks/useRealtime";
+import { useAuth } from "./hooks/useAuth";
 import { Ticker } from "./components/Ticker";
 
 type NavItem = { to: string; label: string; icon: (p: { size?: number }) => ReactNode };
@@ -92,6 +93,7 @@ export function Shell({ children }: { children: ReactNode }) {
         <Ticker />
         <div className="cp-topbar__right">
           <LiveIndicator />
+          <UserMenu />
           <button
             type="button"
             className="cp-btn cp-btn--ghost cp-btn--sm"
@@ -104,6 +106,28 @@ export function Shell({ children }: { children: ReactNode }) {
       </header>
 
       <main className="cp-main">{children}</main>
+    </div>
+  );
+}
+
+function UserMenu() {
+  const { state, logout } = useAuth();
+  if (state.status === "loading" || state.status === "anonymous") return null;
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+      <span className="small dim mono" title={state.status === "single-user" ? "Single-user mode" : undefined}>
+        {state.username}{state.status === "single-user" ? " (single-user)" : ""}
+      </span>
+      {state.status === "authenticated" && (
+        <button
+          type="button"
+          className="cp-btn cp-btn--ghost cp-btn--sm"
+          onClick={logout}
+          title="Sign out"
+        >
+          <Icons.x size={12} />
+        </button>
+      )}
     </div>
   );
 }
