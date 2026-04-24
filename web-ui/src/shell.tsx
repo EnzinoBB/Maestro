@@ -2,6 +2,8 @@ import { type ReactNode, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { Icons, StatusDot } from "./primitives";
 import { useHosts } from "./api/client";
+import { useRealtime } from "./hooks/useRealtime";
+import { Ticker } from "./components/Ticker";
 
 type NavItem = { to: string; label: string; icon: (p: { size?: number }) => ReactNode };
 
@@ -22,7 +24,6 @@ function useTheme() {
     localStorage.setItem("cp-theme", t);
     document.documentElement.dataset.theme = t;
   };
-  // initial paint
   if (document.documentElement.dataset.theme !== theme) {
     document.documentElement.dataset.theme = theme;
   }
@@ -36,7 +37,6 @@ export function Shell({ children }: { children: ReactNode }) {
   const onlineCount = hosts.data?.hosts.filter(h => h.online).length ?? 0;
   const totalHosts = hosts.data?.hosts.length ?? 0;
 
-  // Breadcrumb — crude but functional: splits pathname
   const crumbs = loc.pathname === "/"
     ? [{ label: "Overview", to: "/" }]
     : [
@@ -89,11 +89,9 @@ export function Shell({ children }: { children: ReactNode }) {
           ))}
         </nav>
         <div className="cp-topbar__spacer" />
+        <Ticker />
         <div className="cp-topbar__right">
-          <div className="cp-ws-indicator">
-            <StatusDot status={onlineCount > 0 ? "online" : "offline"} size={6} pulse={onlineCount > 0} />
-            <span>live</span>
-          </div>
+          <LiveIndicator />
           <button
             type="button"
             className="cp-btn cp-btn--ghost cp-btn--sm"
@@ -106,6 +104,19 @@ export function Shell({ children }: { children: ReactNode }) {
       </header>
 
       <main className="cp-main">{children}</main>
+    </div>
+  );
+}
+
+function LiveIndicator() {
+  const { status } = useRealtime();
+  const color =
+    status === "open" ? "online" : status === "connecting" ? "applying" : "offline";
+  const label = status === "open" ? "live" : status === "connecting" ? "connecting…" : "offline";
+  return (
+    <div className="cp-ws-indicator">
+      <StatusDot status={color} size={6} pulse={status !== "closed"} />
+      <span>{label}</span>
     </div>
   );
 }
