@@ -26,6 +26,10 @@ from .api.install import router as install_router
 from .api.deploys import router as deploys_router
 from .api.metrics import router as metrics_router
 from .api.wizard import router as wizard_router
+from .api.auth import router as auth_router
+from .auth.users_repo import UsersRepository
+from .auth.middleware import CurrentUserMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 
 
 logging.basicConfig(
@@ -54,6 +58,7 @@ async def lifespan(app: FastAPI):
     app.state.storage = storage
     app.state.deploy_repo = DeployRepository(db_path)
     app.state.metrics_repo = metrics_repo
+    app.state.users_repo = UsersRepository(db_path)
     app.state.hub = hub
     app.state.engine = engine
     app.state.ui_bus = ui_bus
@@ -77,10 +82,28 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Maestro Control Plane", version="0.1.0", lifespan=lifespan)
+
+    # Starlette middleware: last add_middleware becomes outermost (runs first
+    # on request). We want SessionMiddleware to parse the cookie BEFORE
+    # CurrentUserMiddleware reads the session, so CurrentUserMiddleware is
+    # added FIRST (innermost) and SessionMiddleware LAST (outermost).
+    app.add_middleware(CurrentUserMiddleware)
+
+    secret = os.environ.get("MAESTRO_SESSION_SECRET") or os.urandom(32).hex()
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=secret,
+        session_cookie="maestro_session",
+        https_only=False,  # dev; flip to True behind TLS
+        same_site="lax",
+        max_age=7 * 24 * 3600,
+    )
+
     app.include_router(api_router)
     app.include_router(deploys_router)
     app.include_router(metrics_router)
     app.include_router(wizard_router)
+    app.include_router(auth_router)
     app.include_router(ui_router)
     app.include_router(install_router)
 

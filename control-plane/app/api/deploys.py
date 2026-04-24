@@ -22,10 +22,15 @@ def _repo(request: Request) -> DeployRepository:
 
 
 def _current_user_id(request: Request) -> str:
-    """M1 stub: always resolve to the materialized singleuser row.
-    M5 will replace this with middleware that reads the session cookie.
+    """Read the current user from request.state (populated by
+    CurrentUserMiddleware). Raises 401 if no session is active —
+    in single-user mode the middleware always fills it with
+    'singleuser' so this never fires.
     """
-    return "singleuser"
+    uid = getattr(request.state, "user_id", None)
+    if not uid:
+        raise HTTPException(status_code=401, detail="authentication required")
+    return uid
 
 
 async def _read_apply_body(request: Request) -> tuple[str, dict[str, str], dict[str, str]]:
