@@ -76,6 +76,8 @@ class Storage:
             await db.executescript(_SEED_SINGLEUSER)
             await db.execute("PRAGMA foreign_keys = ON;")
             await db.commit()
+        from .storage_migrate import migrate_legacy_config_to_default_deploy
+        await migrate_legacy_config_to_default_deploy(self.path)
 
     async def save_config(self, project: str, yaml_text: str) -> None:
         async with aiosqlite.connect(self.path) as db:
