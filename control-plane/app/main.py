@@ -25,6 +25,7 @@ from .api.ui import router as ui_router
 from .api.install import router as install_router
 from .api.deploys import router as deploys_router
 from .api.metrics import router as metrics_router
+from .api.wizard import router as wizard_router
 
 
 logging.basicConfig(
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
     app.include_router(api_router)
     app.include_router(deploys_router)
     app.include_router(metrics_router)
+    app.include_router(wizard_router)
     app.include_router(ui_router)
     app.include_router(install_router)
 
