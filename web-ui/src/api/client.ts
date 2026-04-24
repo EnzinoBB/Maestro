@@ -114,3 +114,47 @@ export function deployHealth(d: Deploy, versions?: DeployVersion[]): {
   if (ok === false) return { status: "failed", label: "Last apply failed" };
   return { status: "unknown", label: "Unknown" };
 }
+
+// ----- Metrics hooks -----
+
+export type MetricPoint = [number, number]; // [ts_seconds, value]
+
+async function apiMetricRange(
+  scope: "host" | "component" | "deploy",
+  scopeId: string,
+  metric: string,
+  fromTs: number,
+  toTs: number,
+): Promise<MetricPoint[]> {
+  const u = new URL(`${location.origin}/api/metrics/${scope}/${encodeURIComponent(scopeId)}`);
+  u.searchParams.set("metric", metric);
+  u.searchParams.set("from_ts", String(fromTs));
+  u.searchParams.set("to_ts", String(toTs));
+  const r = await fetch(u.pathname + u.search);
+  if (!r.ok) throw new Error(`metrics fetch failed: ${r.status}`);
+  const body = await r.json();
+  return body.points || [];
+}
+
+export function useMetricRange(
+  scope: "host" | "component" | "deploy",
+  scopeId: string,
+  metric: string,
+  windowSeconds = 15 * 60,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["metrics", scope, scopeId, metric, windowSeconds],
+    enabled,
+    queryFn: async () => {
+      const now = Date.now() / 1000;
+      return apiMetricRange(scope, scopeId, metric, now - windowSeconds, now);
+    },
+    refetchInterval: 10_000,
+    staleTime: 5_000,
+  });
+}
+
+export function useHostCpuSeries(hostId: string, windowSeconds = 15 * 60, enabled = true) {
+  return useMetricRange("host", hostId, "cpu_percent", windowSeconds, enabled);
+}

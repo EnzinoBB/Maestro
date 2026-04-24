@@ -1,6 +1,18 @@
 import { useParams } from "react-router-dom";
-import { useDeploy, useRollback, deployHealth } from "../api/client";
-import { Pill, Mono, relTime, Icons, StatusDot } from "../primitives";
+import { useDeploy, useRollback, deployHealth, useHostCpuSeries } from "../api/client";
+import { Pill, Mono, relTime, Icons, StatusDot, Sparkline } from "../primitives";
+
+function extractHostIds(yaml: string): string[] {
+  const m = yaml.match(/\bhosts:\s*\n((?:[ \t]+\S.*\n?)+)/);
+  if (!m) return [];
+  const block = m[1];
+  const ids: string[] = [];
+  for (const line of block.split("\n")) {
+    const match = line.match(/^[ \t]+([A-Za-z0-9_.-]+)\s*:/);
+    if (match) ids.push(match[1]);
+  }
+  return Array.from(new Set(ids));
+}
 
 export function DeployDetailScreen() {
   const { id } = useParams<{ id: string }>();
@@ -12,6 +24,8 @@ export function DeployDetailScreen() {
   if (!data) return null;
 
   const health = deployHealth(data, data.versions);
+  const currentVersion = data.versions.find(v => v.version_n === data.current_version);
+  const hostIds = currentVersion ? extractHostIds(currentVersion.yaml_text) : [];
 
   return (
     <div>
@@ -30,12 +44,23 @@ export function DeployDetailScreen() {
 
       <div className="cp-tabs">
         <span className="cp-tab active">Versions</span>
-        <span className="cp-tab">Components <span className="dim small">(M2)</span></span>
+        <span className="cp-tab">Components <span className="dim small">(M2.6)</span></span>
         <span className="cp-tab">Configuration <span className="dim small">(soon)</span></span>
-        <span className="cp-tab">Metrics <span className="dim small">(M2)</span></span>
+        <span className="cp-tab">Metrics <span className="dim small">(soon)</span></span>
       </div>
 
       <div className="cp-page">
+        {hostIds.length > 0 && (
+          <section style={{ marginBottom: 24 }}>
+            <div className="cp-section-title" style={{ marginBottom: 10 }}>
+              Hosts ({hostIds.length}) — host CPU over last 15 minutes
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+              {hostIds.map(h => <HostMetricsCard key={h} hostId={h} />)}
+            </div>
+          </section>
+        )}
+
         {data.versions.length === 0 ? (
           <div className="cp-empty">
             <h2>No versions yet</h2>
@@ -81,6 +106,29 @@ export function DeployDetailScreen() {
           </ol>
         )}
       </div>
+    </div>
+  );
+}
+
+function HostMetricsCard({ hostId }: { hostId: string }) {
+  const { data, isLoading } = useHostCpuSeries(hostId, 15 * 60);
+  const series = (data || []).map(([t, v]) => ({ t, v }));
+  const last = series.length > 0 ? series[series.length - 1].v : null;
+  return (
+    <div className="cp-card" style={{ padding: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <Mono>{hostId}</Mono>
+        <div style={{ flex: 1 }} />
+        <span className="small dim">CPU</span>
+        <Mono style={{ fontSize: 12 }}>{last == null ? "—" : `${last.toFixed(1)}%`}</Mono>
+      </div>
+      {isLoading ? (
+        <div className="cp-skel" style={{ height: 30 }} />
+      ) : series.length > 0 ? (
+        <Sparkline data={series} width={220} height={30} />
+      ) : (
+        <div className="small dim">no samples in window</div>
+      )}
     </div>
   );
 }
