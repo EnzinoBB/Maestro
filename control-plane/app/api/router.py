@@ -208,7 +208,13 @@ async def component_logs(request: Request, cid: str, lines: int = 200):
     return {"ok": True, "host_id": host, "component_id": cid, "lines": lines_out}
 
 
-@router.get("/deploys")
-async def deploys(request: Request, limit: int = 20):
+@router.get("/history")
+async def history(request: Request, limit: int = 20):
+    """Legacy deploy apply-event history.
+
+    Renamed from /api/deploys to avoid collision with the new multi-deploy
+    CRUD router in api/deploys.py. Kept for backwards compat during the
+    M1 transition; will move to /api/deploys/{id}/versions semantics in M2+.
+    """
     storage = request.app.state.storage
     return {"history": await storage.history(limit=limit)}

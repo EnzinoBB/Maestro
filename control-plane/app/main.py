@@ -13,9 +13,11 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from .ws import Hub
 from .orchestrator import Engine
 from .storage import Storage
+from .storage_deploys import DeployRepository
 from .api.router import router as api_router
 from .api.ui import router as ui_router
 from .api.install import router as install_router
+from .api.deploys import router as deploys_router
 
 
 logging.basicConfig(
@@ -33,6 +35,7 @@ async def lifespan(app: FastAPI):
     hub = Hub()
     engine = Engine(hub)
     app.state.storage = storage
+    app.state.deploy_repo = DeployRepository(db_path)
     app.state.hub = hub
     app.state.engine = engine
     log.info("control plane ready (db=%s)", db_path)
@@ -43,6 +46,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="Maestro Control Plane", version="0.1.0", lifespan=lifespan)
     app.include_router(api_router)
+    app.include_router(deploys_router)
     app.include_router(ui_router)
     app.include_router(install_router)
 
