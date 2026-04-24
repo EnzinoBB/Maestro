@@ -1,10 +1,15 @@
 """Render a single component: resolve templates, vars, run spec."""
 from __future__ import annotations
 
-import re
-from dataclasses import dataclass, field
-from typing import Any
 import base64
+import hashlib
+import io
+import os
+import re
+import tarfile
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 import jinja2
 
@@ -22,6 +27,68 @@ class RenderedConfigFile:
         return base64.b64encode(self.content.encode("utf-8")).decode("ascii")
 
 
+class RenderError(Exception):
+    pass
+
+
+def _bundle_path_to_tar(source_path: str) -> tuple[bytes, str]:
+    """Read a file or directory into a deterministic tar archive.
+    Returns (tar_bytes, sha256_hex). Deterministic means: sorted entry names,
+    mtime=0, uid=gid=0, uname=gname=''. This guarantees identical content →
+    identical bytes → identical hash.
+    """
+    src = Path(source_path).resolve()
+    if not src.exists():
+        raise RenderError(f"config.files source not found: {source_path}")
+
+    buf = io.BytesIO()
+    tf = tarfile.open(fileobj=buf, mode="w", format=tarfile.PAX_FORMAT)
+    try:
+        if src.is_file():
+            info = tf.gettarinfo(str(src), arcname=src.name)
+            info.mtime = 0
+            info.uid = info.gid = 0
+            info.uname = info.gname = ""
+            with src.open("rb") as f:
+                tf.addfile(info, f)
+        else:
+            # directory: walk sorted
+            for root, dirs, files in os.walk(src):
+                dirs.sort()
+                files.sort()
+                rel_root = Path(root).relative_to(src)
+                for fname in files:
+                    fpath = Path(root) / fname
+                    arcname = str(rel_root / fname) if str(rel_root) != "." else fname
+                    # Normalize Windows backslashes to forward slashes for portable tar
+                    arcname = arcname.replace(os.sep, "/")
+                    info = tf.gettarinfo(str(fpath), arcname=arcname)
+                    info.mtime = 0
+                    info.uid = info.gid = 0
+                    info.uname = info.gname = ""
+                    with fpath.open("rb") as f:
+                        tf.addfile(info, f)
+    finally:
+        tf.close()
+
+    data = buf.getvalue()
+    digest = hashlib.sha256(data).hexdigest()
+    return data, digest
+
+
+@dataclass
+class RenderedConfigArchive:
+    dest: str
+    strategy: str
+    mode: int
+    tar_bytes: bytes
+    content_hash: str
+
+    @property
+    def tar_b64(self) -> str:
+        return base64.b64encode(self.tar_bytes).decode("ascii")
+
+
 @dataclass
 class RenderedComponent:
     component_id: str
@@ -29,6 +96,7 @@ class RenderedComponent:
     source: dict[str, Any]
     build_steps: list[dict[str, Any]] = field(default_factory=list)
     config_files: list[RenderedConfigFile] = field(default_factory=list)
+    config_archives: list[RenderedConfigArchive] = field(default_factory=list)
     run: dict[str, Any] = field(default_factory=dict)
     healthcheck: dict[str, Any] | None = None
     secrets: dict[str, str] = field(default_factory=dict)
@@ -42,14 +110,20 @@ class RenderedComponent:
                 {"dest": f.dest, "mode": f.mode, "content_b64": f.content_b64}
                 for f in self.config_files
             ],
+            "config_archives": [
+                {
+                    "dest": a.dest,
+                    "strategy": a.strategy,
+                    "mode": a.mode,
+                    "tar_b64": a.tar_b64,
+                    "content_hash": a.content_hash,
+                }
+                for a in self.config_archives
+            ],
             "run": self.run,
             "healthcheck": self.healthcheck,
             "secrets": self.secrets,
         }
-
-
-class RenderError(Exception):
-    pass
 
 
 def _env() -> jinja2.Environment:
@@ -127,6 +201,7 @@ def render_component(
     host_id: str,
     *,
     template_store: dict[str, str] | None = None,
+    files_store: dict[str, str] | None = None,
 ) -> RenderedComponent:
     if component_id not in spec.components:
         raise RenderError(f"component '{component_id}' not found")
@@ -174,12 +249,30 @@ def render_component(
             content=rendered,
         ))
 
+    # config archives (files)
+    config_archives: list[RenderedConfigArchive] = []
+    for entry in component.config.files:
+        source_key = _render_str(entry.source, ctx)
+        if files_store and source_key in files_store:
+            tar_bytes = base64.b64decode(files_store[source_key])
+            digest = hashlib.sha256(tar_bytes).hexdigest()
+        else:
+            tar_bytes, digest = _bundle_path_to_tar(source_key)
+        config_archives.append(RenderedConfigArchive(
+            dest=_render_str(entry.dest, ctx),
+            strategy=entry.strategy,
+            mode=entry.mode,
+            tar_bytes=tar_bytes,
+            content_hash=digest,
+        ))
+
     return RenderedComponent(
         component_id=component_id,
         host_id=host_id,
         source=source_dict,
         build_steps=build_steps,
         config_files=config_files,
+        config_archives=config_archives,
         run=run_dict,
         healthcheck=hc_dict,
         secrets={},  # fase 1: no vault

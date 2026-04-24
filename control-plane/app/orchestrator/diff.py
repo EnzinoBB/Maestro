@@ -8,9 +8,20 @@ from typing import Any
 
 
 def component_hash(rendered_payload: dict[str, Any]) -> str:
-    """Stable hash of the rendered component spec (build+run+config+source)."""
+    """Stable hash of the rendered component spec (build+run+config+source).
+
+    For config_archives we include only {dest, strategy, mode, content_hash} and
+    skip tar_b64 — content_hash is already sha256(tar_bytes) so including the
+    blob again would bloat the hash input for no information gain.
+    """
     keys = ["source", "build_steps", "config_files", "run", "healthcheck"]
     sub = {k: rendered_payload.get(k) for k in keys}
+    archives = rendered_payload.get("config_archives") or []
+    sub["config_archives"] = [
+        {"dest": a.get("dest"), "strategy": a.get("strategy"),
+         "mode": a.get("mode"), "content_hash": a.get("content_hash")}
+        for a in archives
+    ]
     return hashlib.sha256(
         json.dumps(sub, sort_keys=True, default=str).encode("utf-8")
     ).hexdigest()[:32]

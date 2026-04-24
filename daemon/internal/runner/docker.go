@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -199,6 +201,32 @@ func (d *DockerRunner) Deploy(ctx context.Context, dp *ComponentDeploy) (*Deploy
 		}, nil
 	}
 	phases = append(phases, PhaseResult{Name: "fetch", OK: true, DurationMS: time.Since(fp).Milliseconds()})
+
+	// config phase: write ConfigFiles and materialize ConfigArchives
+	cp := time.Now()
+	baseDir := filepath.Join(os.TempDir(), "maestro", dp.ComponentID)
+	if err := os.MkdirAll(baseDir, 0o755); err != nil {
+		phases = append(phases, PhaseResult{Name: "config", OK: false,
+			DurationMS: time.Since(cp).Milliseconds(), Detail: err.Error()})
+		return &DeployResult{OK: false, ComponentID: dp.ComponentID, Phases: phases,
+			Error: &ErrorInfo{Code: "config_error", Phase: "config", Message: err.Error()}}, nil
+	}
+	if err := WriteConfigFiles(baseDir, dp.ConfigFiles); err != nil {
+		phases = append(phases, PhaseResult{Name: "config", OK: false,
+			DurationMS: time.Since(cp).Milliseconds(), Detail: err.Error()})
+		return &DeployResult{OK: false, ComponentID: dp.ComponentID, Phases: phases,
+			Error: &ErrorInfo{Code: "config_error", Phase: "config", Message: err.Error()}}, nil
+	}
+	for _, arc := range dp.ConfigArchives {
+		if err := MaterializeArchive(arc); err != nil {
+			phases = append(phases, PhaseResult{Name: "config", OK: false,
+				DurationMS: time.Since(cp).Milliseconds(), Detail: err.Error()})
+			return &DeployResult{OK: false, ComponentID: dp.ComponentID, Phases: phases,
+				Error: &ErrorInfo{Code: "config_error", Phase: "config", Message: err.Error()}}, nil
+		}
+	}
+	phases = append(phases, PhaseResult{Name: "config", OK: true,
+		DurationMS: time.Since(cp).Milliseconds()})
 
 	// stop old
 	sp := time.Now()

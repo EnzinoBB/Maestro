@@ -160,6 +160,15 @@ everything it needs to deploy a component.
     "config_files": [
       {"dest": "/opt/demo-api/.env", "mode": 420, "content_b64": "..."}
     ],
+    "config_archives": [
+      {
+        "dest": "/var/www/site",
+        "strategy": "atomic_symlink",
+        "mode": 493,
+        "tar_b64": "H4sIA...",
+        "content_hash": "a1b2..."
+      }
+    ],
     "run": { ... },              // the entire ComponentSpec.run
     "secrets": {                 // volatile, never persisted to disk by the daemon
       "DB_PASSWORD": "xxx"
@@ -169,6 +178,12 @@ everything it needs to deploy a component.
   }
 }
 ```
+
+`config_archives` carries tar-bundled directory material. Each entry has a
+strategy (`overwrite`, `atomic`, `atomic_symlink`) that determines how the
+daemon materializes it on the host. For `atomic_symlink` the daemon keeps
+the last 5 releases under `<dest>/releases/<content_hash>/` and flips
+`<dest>/current` atomically.
 
 Reply (synchronous, may arrive at the end of the deployment):
 

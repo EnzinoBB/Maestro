@@ -82,6 +82,7 @@ components:
       code: cold
       config: hot
       dependencies: cold
+      content: hot                   # fires when a config.files entry changes
     tests:                { ... }     # (Phase 2)
     depends_on: [db]                  # Logical dependencies between components
     healthcheck:          { ... }
@@ -152,6 +153,27 @@ config:
 Variables support references to `hosts`, `components`, global `vars`, and
 secrets via `vault://`.
 
+```yaml
+config:
+  templates:
+    - source: configs/api.env.j2
+      dest: /etc/my-app/api.env
+      mode: 0640
+  files:
+    - source: ./assets            # directory or single file
+      dest: /var/www/assets
+      strategy: atomic_symlink    # overwrite | atomic | atomic_symlink
+      mode: 0755
+```
+
+`config.files` materializes verbatim files or directories (no Jinja2
+rendering) on the target host. Three strategies:
+- `overwrite` — direct copy, non-atomic.
+- `atomic` — write to `.tmp` + rename, atomic per path.
+- `atomic_symlink` — extract to `<dest>/releases/<hash>/` and flip
+  `<dest>/current`. Zero-downtime; rollback via `request.rollback` flips
+  back to the previous release. Default strategy for directory sources.
+
 ### `run`
 
 Specifies how the daemon must run the component. The type determines the
@@ -208,6 +230,19 @@ run:
     values:
       image:
         tag: "{{ source.tag }}"
+```
+
+### `reload_triggers`
+
+Controls which change types trigger a cold restart even when `deploy_mode` is
+set to `hot`.
+
+```yaml
+reload_triggers:
+  code: cold
+  config: hot
+  dependencies: cold
+  content: hot                   # fires when a config.files entry changes
 ```
 
 ### `healthcheck`

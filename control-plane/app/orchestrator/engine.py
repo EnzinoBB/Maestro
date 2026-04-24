@@ -134,19 +134,25 @@ class Engine:
     # ---- diff -----------------------------------------------------------
 
     def render_all(
-        self, spec: DeploymentSpec, *, template_store: dict[str, str] | None = None,
+        self, spec: DeploymentSpec, *,
+        template_store: dict[str, str] | None = None,
+        files_store: dict[str, str] | None = None,
     ) -> dict[tuple[str, str], dict[str, Any]]:
         desired: dict[tuple[str, str], dict[str, Any]] = {}
         for bind in spec.deployment:
             for cid in bind.components:
-                rc = render_component(spec, cid, bind.host, template_store=template_store)
+                rc = render_component(spec, cid, bind.host,
+                                      template_store=template_store,
+                                      files_store=files_store)
                 desired[(bind.host, cid)] = rc.to_payload()
         return desired
 
     async def diff(
-        self, spec: DeploymentSpec, *, template_store: dict[str, str] | None = None,
+        self, spec: DeploymentSpec, *,
+        template_store: dict[str, str] | None = None,
+        files_store: dict[str, str] | None = None,
     ) -> Diff:
-        desired = self.render_all(spec, template_store=template_store)
+        desired = self.render_all(spec, template_store=template_store, files_store=files_store)
         observed = await self.get_observed_state(spec)
         observed_hashes = {
             k: v.get("component_hash") for k, v in observed.items()
@@ -160,12 +166,13 @@ class Engine:
         spec: DeploymentSpec,
         *,
         template_store: dict[str, str] | None = None,
+        files_store: dict[str, str] | None = None,
         dry_run: bool = False,
         timeout_per_component: float = 600.0,
         only: tuple[str, str] | None = None,  # (host, component) filter
     ) -> DeployResult:
         try:
-            desired = self.render_all(spec, template_store=template_store)
+            desired = self.render_all(spec, template_store=template_store, files_store=files_store)
         except Exception as e:
             return DeployResult(ok=False, error=f"render failed: {e}")
 

@@ -1,0 +1,62 @@
+api_version: maestro/v1
+project: playmaestro-cloud
+description: Static website www.playmaestro.cloud served by Caddy with automatic Let's Encrypt HTTPS
+
+hosts:
+  host1:
+    type: linux
+    address: 109.199.123.26
+    user: agent
+    tags: [prod, web]
+
+components:
+  caddy-playmaestro:
+    description: Caddy reverse proxy + static file server with auto-HTTPS
+    source:
+      type: docker
+      image: caddy
+      tag: "2-alpine"
+      pull_policy: if_not_present
+    config:
+      templates:
+        - source: Caddyfile.j2
+          dest: /home/agent/playmaestro/caddy/Caddyfile
+          mode: 0644
+      files:
+        - source: ../../website
+          dest: /home/agent/playmaestro/site
+          strategy: atomic_symlink
+          mode: 0755
+      vars:
+        primary_host: www.playmaestro.cloud
+        apex_host: playmaestro.cloud
+    run:
+      type: docker
+      container_name: caddy-playmaestro
+      image: "{{ source.image }}:{{ source.tag }}"
+      ports:
+        - "80:80"
+        - "443:443"
+      volumes:
+        - "/home/agent/playmaestro/site:/srv-root:ro"
+        - "/home/agent/playmaestro/caddy/data:/data"
+        - "/home/agent/playmaestro/caddy/Caddyfile:/etc/caddy/Caddyfile:ro"
+      restart: unless-stopped
+    deploy_mode: cold
+    reload_triggers:
+      code: cold
+      config: hot
+      content: hot
+    healthcheck:
+      type: http
+      url: https://www.playmaestro.cloud/
+      expect_status: 200
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+
+deployment:
+  - host: host1
+    components: [caddy-playmaestro]
+    strategy: sequential
