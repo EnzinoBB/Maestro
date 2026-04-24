@@ -86,3 +86,55 @@ async def test_record_samples_empty_is_noop():
             async with db.execute("SELECT COUNT(*) FROM metric_samples") as cur:
                 count = (await cur.fetchone())[0]
         assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_range_returns_ordered_samples_in_window():
+    with tempfile.TemporaryDirectory() as td:
+        path = os.path.join(td, "t.db")
+        await Storage(path).init()
+        repo = MetricsRepository(path)
+        await repo.record_samples([
+            MetricSample(ts=100.0, scope="host", scope_id="h1", metric="cpu_percent", value=10.0),
+            MetricSample(ts=200.0, scope="host", scope_id="h1", metric="cpu_percent", value=20.0),
+            MetricSample(ts=300.0, scope="host", scope_id="h1", metric="cpu_percent", value=30.0),
+            MetricSample(ts=200.0, scope="host", scope_id="h1", metric="ram_percent", value=99.0),
+            MetricSample(ts=200.0, scope="host", scope_id="h2", metric="cpu_percent", value=88.0),
+        ])
+
+        rows = await repo.range(scope="host", scope_id="h1", metric="cpu_percent",
+                                from_ts=150.0, to_ts=300.0)
+        assert rows == [(200.0, 20.0), (300.0, 30.0)]
+
+
+@pytest.mark.asyncio
+async def test_range_empty_when_no_match():
+    with tempfile.TemporaryDirectory() as td:
+        path = os.path.join(td, "t.db")
+        await Storage(path).init()
+        repo = MetricsRepository(path)
+        rows = await repo.range(scope="host", scope_id="missing", metric="cpu_percent",
+                                from_ts=0.0, to_ts=1000.0)
+        assert rows == []
+
+
+@pytest.mark.asyncio
+async def test_list_events_filters_by_scope_and_kind():
+    with tempfile.TemporaryDirectory() as td:
+        path = os.path.join(td, "t.db")
+        await Storage(path).init()
+        repo = MetricsRepository(path)
+        await repo.record_event(MetricEvent(ts=100.0, kind="healthcheck_state_change",
+                                            scope="component", scope_id="web", payload={"to": "fail"}))
+        await repo.record_event(MetricEvent(ts=110.0, kind="apply_completed",
+                                            scope="deploy", scope_id="d1", payload={"ok": True}))
+        await repo.record_event(MetricEvent(ts=120.0, kind="healthcheck_state_change",
+                                            scope="component", scope_id="api", payload={"to": "ok"}))
+
+        all_hc = await repo.list_events(kind="healthcheck_state_change", limit=10)
+        assert len(all_hc) == 2
+        assert all_hc[0]["ts"] >= all_hc[-1]["ts"]
+
+        web_only = await repo.list_events(scope="component", scope_id="web", limit=10)
+        assert len(web_only) == 1
+        assert web_only[0]["payload"] == {"to": "fail"}
