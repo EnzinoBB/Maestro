@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useDeploys, useCreateDeploy, deployHealth, type Deploy } from "../api/client";
+import { useDeploys, useCreateDeploy, useDeploy, deployHealth, type Deploy } from "../api/client";
 import { Pill, Icons, Mono, relTime, StatusDot } from "../primitives";
+import { DeploySparkline } from "../components/DeploySparkline";
 
 export function OverviewScreen() {
   const { data, isLoading, error } = useDeploys();
@@ -99,6 +100,7 @@ export function OverviewScreen() {
 
 function DeployCard({ deploy }: { deploy: Deploy }) {
   const health = deployHealth(deploy);
+  const firstComponent = useFirstComponentId(deploy);
   return (
     <Link to={`/deploys/${deploy.id}`} className="cp-deploy-card" style={{ textDecoration: "none", color: "inherit", display: "block" }}>
       <div className="cp-deploy-card__row">
@@ -113,6 +115,9 @@ function DeployCard({ deploy }: { deploy: Deploy }) {
         <span>updated {relTime(deploy.updated_at)}</span>
         <span><Mono dim>{deploy.owner_user_id}</Mono></span>
       </div>
+      <div className="cp-deploy-card__sparkline">
+        <DeploySparkline componentId={firstComponent} />
+      </div>
       <div className="cp-deploy-card__actions">
         <span className="cp-btn cp-btn--sm">
           <Icons.deploy size={11} />
@@ -121,4 +126,24 @@ function DeployCard({ deploy }: { deploy: Deploy }) {
       </div>
     </Link>
   );
+}
+
+/**
+ * Extract the first component id from the deploy's current YAML, via
+ * the full /api/deploys/{id} fetch. Returns null until the detail
+ * query is ready or no current version exists. Temporary until M3
+ * ships structured components on the list endpoint.
+ */
+function useFirstComponentId(deploy: Deploy): string | null {
+  const { data } = useDeploy(deploy.current_version != null ? deploy.id : undefined);
+  if (!data) return null;
+  const current = data.versions.find(v => v.version_n === data.current_version);
+  if (!current) return null;
+  const m = current.yaml_text.match(/\bcomponents:\s*\n([\s\S]*?)(?=\ndeployment:|\n[a-z]|$)/);
+  if (!m) return null;
+  for (const line of m[1].split("\n")) {
+    const mm = line.match(/^(?:  |\t)([A-Za-z0-9_.-]+)\s*:/);
+    if (mm) return mm[1];
+  }
+  return null;
 }
