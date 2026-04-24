@@ -4,6 +4,7 @@ import { RealtimeProvider } from "./hooks/useRealtime";
 import { Shell } from "./shell";
 import { OverviewScreen } from "./screens/overview";
 import { DeployDetailScreen } from "./screens/deploy-detail";
+import { DeployMetricsScreen } from "./screens/deploy-metrics";
 import { StubScreen } from "./screens/stub";
 
 const qc = new QueryClient({
@@ -20,6 +21,7 @@ export default function App() {
               <Route path="/" element={<OverviewScreen />} />
               <Route path="/deploys" element={<OverviewScreen />} />
               <Route path="/deploys/:id" element={<DeployDetailScreen />} />
+              <Route path="/deploys/:id/metrics" element={<DeployMetricsScreen />} />
               <Route path="/nodes" element={<StubScreen title="Nodes" milestone="M2/M5" />} />
               <Route path="/wizard" element={<StubScreen title="Wizard" milestone="M3" />} />
               <Route path="/admin" element={<StubScreen title="Admin" milestone="M5" />} />

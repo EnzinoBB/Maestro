@@ -158,3 +158,12 @@ export function useMetricRange(
 export function useHostCpuSeries(hostId: string, windowSeconds = 15 * 60, enabled = true) {
   return useMetricRange("host", hostId, "cpu_percent", windowSeconds, enabled);
 }
+
+export function useComponentMetric(
+  componentId: string,
+  metric: string,
+  windowSeconds = 15 * 60,
+  enabled = true,
+) {
+  return useMetricRange("component", componentId, metric, windowSeconds, enabled);
+}

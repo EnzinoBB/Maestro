@@ -1,4 +1,4 @@
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { useDeploy, useRollback, deployHealth, useHostCpuSeries } from "../api/client";
 import { Pill, Mono, relTime, Icons, StatusDot, Sparkline } from "../primitives";
 
@@ -46,7 +46,7 @@ export function DeployDetailScreen() {
         <span className="cp-tab active">Versions</span>
         <span className="cp-tab">Components <span className="dim small">(M2.6)</span></span>
         <span className="cp-tab">Configuration <span className="dim small">(soon)</span></span>
-        <span className="cp-tab">Metrics <span className="dim small">(soon)</span></span>
+        <Link to={`/deploys/${id}/metrics`} className="cp-tab">Metrics</Link>
       </div>
 
       <div className="cp-page">
