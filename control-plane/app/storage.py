@@ -58,6 +58,28 @@ CREATE TABLE IF NOT EXISTS deploy_versions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_deploy_versions_deploy ON deploy_versions(deploy_id, version_n DESC);
+
+-- Metrics (M2)
+CREATE TABLE IF NOT EXISTS metric_samples (
+    ts          REAL NOT NULL,
+    scope       TEXT NOT NULL,            -- 'host' | 'component' | 'deploy'
+    scope_id    TEXT NOT NULL,
+    metric      TEXT NOT NULL,
+    value       REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_metric_samples_lookup
+    ON metric_samples(scope, scope_id, metric, ts);
+
+CREATE TABLE IF NOT EXISTS metric_events (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts            REAL NOT NULL,
+    kind          TEXT NOT NULL,
+    scope         TEXT NOT NULL,
+    scope_id      TEXT NOT NULL,
+    payload_json  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_metric_events_lookup
+    ON metric_events(scope, scope_id, ts DESC);
 """
 
 _SEED_SINGLEUSER = """
