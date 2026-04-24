@@ -7,6 +7,7 @@ import json
 
 
 _SCHEMA = """
+-- Legacy tables (kept for backward compat during M1; removed in M2+)
 CREATE TABLE IF NOT EXISTS config (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     project TEXT,
@@ -20,6 +21,48 @@ CREATE TABLE IF NOT EXISTS deploy_history (
     result_json TEXT NOT NULL,
     ts REAL NOT NULL
 );
+
+-- New multi-deploy schema (M1)
+CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE,
+    password_hash TEXT,
+    is_admin INTEGER NOT NULL DEFAULT 0,
+    created_at REAL NOT NULL DEFAULT (strftime('%s','now'))
+);
+
+CREATE TABLE IF NOT EXISTS deploys (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    owner_user_id TEXT NOT NULL REFERENCES users(id),
+    current_version INTEGER,
+    state_summary TEXT,
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL,
+    UNIQUE(owner_user_id, name)
+);
+
+CREATE TABLE IF NOT EXISTS deploy_versions (
+    id TEXT PRIMARY KEY,
+    deploy_id TEXT NOT NULL REFERENCES deploys(id) ON DELETE CASCADE,
+    version_n INTEGER NOT NULL,
+    yaml_text TEXT NOT NULL,
+    components_hash TEXT NOT NULL,
+    parent_version_id TEXT REFERENCES deploy_versions(id),
+    applied_at REAL NOT NULL,
+    applied_by_user_id TEXT NOT NULL REFERENCES users(id),
+    result_json TEXT,
+    kind TEXT NOT NULL DEFAULT 'apply',
+    UNIQUE(deploy_id, version_n)
+);
+
+CREATE INDEX IF NOT EXISTS idx_deploy_versions_deploy ON deploy_versions(deploy_id, version_n DESC);
+"""
+
+_SEED_SINGLEUSER = """
+INSERT OR IGNORE INTO users (id, username, is_admin, created_at)
+VALUES ('singleuser', 'singleuser', 1, strftime('%s','now'));
 """
 
 
@@ -30,6 +73,8 @@ class Storage:
     async def init(self) -> None:
         async with aiosqlite.connect(self.path) as db:
             await db.executescript(_SCHEMA)
+            await db.executescript(_SEED_SINGLEUSER)
+            await db.execute("PRAGMA foreign_keys = ON;")
             await db.commit()
 
     async def save_config(self, project: str, yaml_text: str) -> None:
