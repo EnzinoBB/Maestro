@@ -112,5 +112,23 @@ class MetricsRepository:
             for r in rows
         ]
 
-    # ---------- maintenance (Task 6) ----------
-    # cleanup_older_than is added in Task 6.
+    # ---------- maintenance ----------
+
+    async def cleanup_older_than(
+        self, *, samples_max_age_seconds: float, events_keep_last_n: int,
+    ) -> None:
+        """Drop samples older than `samples_max_age_seconds` from now and
+        keep only the most recent `events_keep_last_n` events."""
+        import time as _time
+        cutoff = _time.time() - samples_max_age_seconds
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute(
+                "DELETE FROM metric_samples WHERE ts < ?", (cutoff,),
+            )
+            await db.execute(
+                "DELETE FROM metric_events WHERE id NOT IN ("
+                "  SELECT id FROM metric_events ORDER BY ts DESC LIMIT ?"
+                ")",
+                (int(events_keep_last_n),),
+            )
+            await db.commit()
