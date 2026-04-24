@@ -167,3 +167,21 @@ export function useComponentMetric(
 ) {
   return useMetricRange("component", componentId, metric, windowSeconds, enabled);
 }
+
+// ----- Wizard helpers -----
+
+export type DockerSuggestions = {
+  exposed_ports: number[];
+  env: { key: string; value: string }[];
+  volumes: string[];
+};
+
+export async function postDockerInspect(image: string, tag: string): Promise<DockerSuggestions> {
+  const r = await fetch("/api/wizard/docker/inspect", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ image, tag }),
+  });
+  if (!r.ok) throw new Error(`inspect failed: ${r.status}`);
+  return r.json();
+}
