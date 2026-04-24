@@ -118,6 +118,21 @@ async def test_range_empty_when_no_match():
         assert rows == []
 
 
+from fastapi.testclient import TestClient
+from app.main import create_app
+
+
+def test_app_lifespan_wires_metrics_state(monkeypatch):
+    with tempfile.TemporaryDirectory() as td:
+        monkeypatch.setenv("MAESTRO_DB", os.path.join(td, "t.db"))
+        monkeypatch.setenv("MAESTRO_METRICS_RETENTION_INTERVAL_S", "60")
+        app = create_app()
+        with TestClient(app) as _client:
+            repo = app.state.metrics_repo
+            assert repo is not None
+            assert len(app.state.hub._event_handlers) >= 1
+
+
 @pytest.mark.asyncio
 async def test_list_events_filters_by_scope_and_kind():
     with tempfile.TemporaryDirectory() as td:

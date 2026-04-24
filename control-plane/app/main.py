@@ -10,10 +10,15 @@ from fastapi import FastAPI, WebSocket, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, PlainTextResponse
 
+import asyncio
+
 from .ws import Hub
 from .orchestrator import Engine
 from .storage import Storage
 from .storage_deploys import DeployRepository
+from .storage_metrics import MetricsRepository
+from .metrics.handler import make_metrics_event_handler
+from .metrics.retention import retention_loop
 from .api.router import router as api_router
 from .api.ui import router as ui_router
 from .api.install import router as install_router
@@ -34,13 +39,32 @@ async def lifespan(app: FastAPI):
     await storage.init()
     hub = Hub()
     engine = Engine(hub)
+    metrics_repo = MetricsRepository(db_path)
+
+    # Persist incoming event.metrics into the metrics store.
+    hub.add_event_handler(make_metrics_event_handler(metrics_repo))
+
     app.state.storage = storage
     app.state.deploy_repo = DeployRepository(db_path)
+    app.state.metrics_repo = metrics_repo
     app.state.hub = hub
     app.state.engine = engine
-    log.info("control plane ready (db=%s)", db_path)
-    yield
-    log.info("control plane shutting down")
+
+    interval = int(os.environ.get("MAESTRO_METRICS_RETENTION_INTERVAL_S", "600"))
+    retention_task = asyncio.create_task(retention_loop(
+        metrics_repo, interval_seconds=interval,
+    ))
+
+    log.info("control plane ready (db=%s, retention every %ss)", db_path, interval)
+    try:
+        yield
+    finally:
+        retention_task.cancel()
+        try:
+            await retention_task
+        except asyncio.CancelledError:
+            pass
+        log.info("control plane shutting down")
 
 
 def create_app() -> FastAPI:
