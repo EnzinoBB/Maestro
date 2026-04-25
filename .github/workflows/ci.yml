@@ -39,6 +39,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install fastapi 'uvicorn[standard]' pydantic pyyaml jinja2 \
               sqlalchemy aiosqlite websockets httpx click mcp python-multipart \
+              itsdangerous \
               pytest pytest-asyncio ruff
       - name: ruff
         working-directory: control-plane
