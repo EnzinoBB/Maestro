@@ -23,6 +23,10 @@ type Orchestrator struct {
 	Systemd *runner.SystemdRunner
 	Version string
 	Logger  *slog.Logger
+	// PromTargets is the list of component-declared Prometheus /metrics
+	// endpoints the daemon will scrape on each PublishMetrics tick.
+	// Populated by callers (M2.7); empty by default.
+	PromTargets []metrics.PromTarget
 }
 
 func (o *Orchestrator) logger() *slog.Logger {
@@ -458,6 +462,32 @@ func (o *Orchestrator) PublishMetrics(ctx context.Context, client *ws.Client) er
 			"metric":   ds.Metric,
 			"value":    ds.Value,
 		})
+	}
+
+	// Per-container log line rate over the last 30s (M2.7).
+	for _, ls := range metrics.CollectLogRates(ctx, nameToCid, 30) {
+		samples = append(samples, map[string]any{
+			"scope":    ls.Scope,
+			"scope_id": ls.ScopeID,
+			"metric":   ls.Metric,
+			"value":    ls.Value,
+		})
+	}
+
+	// Custom Prometheus scrape (M2.7). Targets come from the component's
+	// config metadata: a future field `metrics: {endpoint, allow}` on
+	// ComponentSpec will populate o.PromTargets at deploy-time. For now
+	// the orchestrator exposes an injectable list (default empty) so the
+	// integration is wired without requiring a schema change yet.
+	if len(o.PromTargets) > 0 {
+		for _, ps := range metrics.CollectPrometheus(ctx, o.PromTargets, 0) {
+			samples = append(samples, map[string]any{
+				"scope":    ps.Scope,
+				"scope_id": ps.ScopeID,
+				"metric":   ps.Metric,
+				"value":    ps.Value,
+			})
+		}
 	}
 
 	payload := map[string]any{
