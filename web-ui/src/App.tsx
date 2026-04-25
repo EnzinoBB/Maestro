@@ -8,8 +8,9 @@ import { OverviewScreen } from "./screens/overview";
 import { DeployDetailScreen } from "./screens/deploy-detail";
 import { DeployMetricsScreen } from "./screens/deploy-metrics";
 import { WizardScreen } from "./screens/wizard";
+import { NodesScreen } from "./screens/nodes";
+import { AdminScreen } from "./screens/admin";
 import { LoginScreen } from "./screens/login";
-import { StubScreen } from "./screens/stub";
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -45,9 +46,9 @@ export default function App() {
                         <Route path="/deploys" element={<OverviewScreen />} />
                         <Route path="/deploys/:id" element={<DeployDetailScreen />} />
                         <Route path="/deploys/:id/metrics" element={<DeployMetricsScreen />} />
-                        <Route path="/nodes" element={<StubScreen title="Nodes" milestone="M2/M5" />} />
+                        <Route path="/nodes" element={<NodesScreen />} />
                         <Route path="/wizard" element={<WizardScreen />} />
-                        <Route path="/admin" element={<StubScreen title="Admin" milestone="M5" />} />
+                        <Route path="/admin" element={<AdminScreen />} />
                       </Routes>
                     </Shell>
                   </RequireAuth>
