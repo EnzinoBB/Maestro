@@ -2,6 +2,7 @@ name: Release
 
 on:
   push:
+    branches: [main]
     tags:
       - 'v*'
 
@@ -12,8 +13,58 @@ permissions:
   attestations: write
 
 jobs:
+  # Decide whether this run should produce a release, and what version to use.
+  # Two trigger paths:
+  #   1) tag push 'vX.Y.Z'  → version = github.ref_name, always release
+  #   2) push to main       → version = 'v' + contents of repo-root VERSION
+  #                          → release only if that tag does not already exist
+  decide:
+    name: Decide release version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+      should_release: ${{ steps.compute.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # we need full history + tags for rev-parse
+      - id: compute
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+            echo "Triggered by tag: $VERSION"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # main-push path: version comes from VERSION file
+          if [[ ! -f VERSION ]]; then
+            echo "No VERSION file at repo root; skipping release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          VFILE="$(tr -d '[:space:]' < VERSION)"
+          if [[ -z "$VFILE" ]]; then
+            echo "VERSION file is empty; skipping release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          VERSION="v${VFILE}"
+          echo "VERSION file says: $VFILE  →  candidate tag: $VERSION"
+          if git rev-parse "refs/tags/${VERSION}" >/dev/null 2>&1; then
+            echo "Tag $VERSION already exists; skipping release (bump VERSION to release a new one)."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "should_release=true" >> "$GITHUB_OUTPUT"
+
   build-binaries:
     name: Build binaries
+    needs: decide
+    if: needs.decide.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,7 +74,7 @@ jobs:
           cache-dependency-path: daemon/go.sum
       - name: Cross-compile
         env:
-          VERSION: ${{ github.ref_name }}
+          VERSION: ${{ needs.decide.outputs.version }}
         run: make build-all VERSION=${VERSION}
       - name: Generate checksums
         run: make checksums
@@ -43,7 +94,8 @@ jobs:
 
   build-image:
     name: Build & push CP image
-    needs: build-binaries
+    needs: [decide, build-binaries]
+    if: needs.decide.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -66,9 +118,9 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ needs.decide.outputs.version }}
           tags: |
-            ghcr.io/enzinobb/maestro-cp:${{ github.ref_name }}
+            ghcr.io/enzinobb/maestro-cp:${{ needs.decide.outputs.version }}
             ghcr.io/enzinobb/maestro-cp:latest
       - name: Attest image
         uses: actions/attest-build-provenance@v1
@@ -79,18 +131,38 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: [build-binaries, build-image]
+    needs: [decide, build-binaries, build-image]
+    if: needs.decide.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Download binaries
         uses: actions/download-artifact@v4
         with:
           name: binaries
           path: dist/
+      # When triggered by main-push (not by an existing tag), create + push
+      # the tag now so the GitHub Release can be attached to it. Uses the
+      # default GITHUB_TOKEN with contents:write permission.
+      - name: Create tag (when triggered by main push)
+        if: github.ref_type == 'branch'
+        env:
+          VERSION: ${{ needs.decide.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${VERSION}" -m "Release ${VERSION}"
+          git push origin "${VERSION}"
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.decide.outputs.version }}
+          name: ${{ needs.decide.outputs.version }}
+          generate_release_notes: true
           files: |
             dist/maestrod-linux-amd64
             dist/maestrod-linux-arm64
@@ -99,4 +171,3 @@ jobs:
             dist/SHA256SUMS
             scripts/install-cp.sh
             scripts/install-daemon.sh
-          generate_release_notes: true

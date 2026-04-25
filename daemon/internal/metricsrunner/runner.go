@@ -1,4 +1,7 @@
-package metrics
+// Package metricsrunner drives the periodic metrics publication ticker.
+// Lives in its own package to break the import cycle: orchestrator depends
+// on metrics (for CollectHost), and the ticker depends on orchestrator.
+package metricsrunner
 
 import (
 	"context"

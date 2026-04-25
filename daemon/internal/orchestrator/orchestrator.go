@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
+	"strings"
 	"time"
 
+	"github.com/maestro-project/maestro-daemon/internal/metrics"
 	"github.com/maestro-project/maestro-daemon/internal/runner"
 	"github.com/maestro-project/maestro-daemon/internal/state"
 	"github.com/maestro-project/maestro-daemon/internal/ws"
@@ -22,6 +24,33 @@ type Orchestrator struct {
 	Systemd *runner.SystemdRunner
 	Version string
 	Logger  *slog.Logger
+}
+
+// promTargetsFromComps derives a PromTarget per component that has a metrics
+// endpoint configured. The allow-list is parsed from the comma-separated
+// MetricsAllow column. Components without metrics config are skipped.
+func promTargetsFromComps(comps []*state.Component) []metrics.PromTarget {
+	out := make([]metrics.PromTarget, 0, len(comps))
+	for _, c := range comps {
+		if c.MetricsEndpoint == "" {
+			continue
+		}
+		var allow []string
+		if c.MetricsAllow != "" {
+			for _, p := range strings.Split(c.MetricsAllow, ",") {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					allow = append(allow, p)
+				}
+			}
+		}
+		out = append(out, metrics.PromTarget{
+			ComponentID: c.ID,
+			URL:         c.MetricsEndpoint,
+			AllowList:   allow,
+		})
+	}
+	return out
 }
 
 func (o *Orchestrator) logger() *slog.Logger {
@@ -206,6 +235,21 @@ func (o *Orchestrator) handleDeploy(ctx context.Context, msg ws.Message) (string
 		}(),
 		ComponentHash: dep.TargetHash,
 		Runner:        runnerName,
+	}
+	// Persist Prometheus scrape config when the component declares one (M2.8).
+	if dep.Metrics != nil {
+		if ep, ok := dep.Metrics["endpoint"].(string); ok {
+			comp.MetricsEndpoint = ep
+		}
+		if rawAllow, ok := dep.Metrics["allow"].([]any); ok {
+			parts := make([]string, 0, len(rawAllow))
+			for _, v := range rawAllow {
+				if s, ok := v.(string); ok && s != "" {
+					parts = append(parts, s)
+				}
+			}
+			comp.MetricsAllow = strings.Join(parts, ",")
+		}
 	}
 	if res.RuntimeInfo != nil {
 		comp.ContainerID = res.RuntimeInfo.ContainerID
@@ -398,19 +442,96 @@ func (o *Orchestrator) markHealth(ctx context.Context, id string, ok bool) {
 }
 
 // PublishMetrics sends a periodic event.metrics. Meant to be called from a ticker.
+//
+// Payload contract (v1, see CP M2 spec):
+//
+//	{
+//	  "ts":      RFC3339 timestamp,
+//	  "samples": [{scope, scope_id, metric, value}, ...],
+//	}
+//
+// host_id is intentionally omitted from the payload — the CP fills it in
+// from the WS connection's registered host_id (see metrics.handler).
+// scope_id for host-scoped samples is left empty for the same reason.
 func (o *Orchestrator) PublishMetrics(ctx context.Context, client *ws.Client) error {
 	comps, err := o.Store.List(ctx)
 	if err != nil {
 		return err
 	}
-	entries := []map[string]any{}
-	for _, c := range comps {
-		entry := map[string]any{"id": c.ID, "status": c.Status}
-		entries = append(entries, entry)
+
+	samples := []map[string]any{}
+
+	// Host samples (CPU%, RAM%, load1).
+	for _, hs := range metrics.CollectHost(ctx) {
+		samples = append(samples, map[string]any{
+			"scope":    "host",
+			"scope_id": "",
+			"metric":   hs.Metric,
+			"value":    hs.Value,
+		})
 	}
+
+	// Per-component healthcheck liveness: 1 if last hc OK, 0 if failed,
+	// omitted entirely if no healthcheck has run yet. Also build a
+	// name→id map for the docker stats collector (container naming
+	// convention is "maestro-<component_id>").
+	nameToCid := map[string]string{}
+	for _, c := range comps {
+		if c.LastHCAt != nil {
+			v := 0.0
+			if c.LastHCOK {
+				v = 1.0
+			}
+			samples = append(samples, map[string]any{
+				"scope":    "component",
+				"scope_id": c.ID,
+				"metric":   "healthcheck_ok",
+				"value":    v,
+			})
+		}
+		nameToCid["maestro-"+c.ID] = c.ID
+	}
+
+	// Per-container CPU + RAM (best-effort; returns nil if docker
+	// is unavailable, no samples emitted in that case).
+	for _, ds := range metrics.CollectDocker(ctx, nameToCid) {
+		samples = append(samples, map[string]any{
+			"scope":    ds.Scope,
+			"scope_id": ds.ScopeID,
+			"metric":   ds.Metric,
+			"value":    ds.Value,
+		})
+	}
+
+	// Per-container log line rate over the last 30s (M2.7).
+	for _, ls := range metrics.CollectLogRates(ctx, nameToCid, 30) {
+		samples = append(samples, map[string]any{
+			"scope":    ls.Scope,
+			"scope_id": ls.ScopeID,
+			"metric":   ls.Metric,
+			"value":    ls.Value,
+		})
+	}
+
+	// Custom Prometheus scrape (M2.8). Targets are derived from the Store
+	// components on each tick: any component with a `metrics:` stanza in
+	// its ComponentSpec carries `MetricsEndpoint` + `MetricsAllow` columns
+	// populated at deploy-time. This auto-adapts to deploy/undeploy without
+	// any extra synchronisation.
+	if targets := promTargetsFromComps(comps); len(targets) > 0 {
+		for _, ps := range metrics.CollectPrometheus(ctx, targets, 0) {
+			samples = append(samples, map[string]any{
+				"scope":    ps.Scope,
+				"scope_id": ps.ScopeID,
+				"metric":   ps.Metric,
+				"value":    ps.Value,
+			})
+		}
+	}
+
 	payload := map[string]any{
-		"ts":         time.Now().UTC().Format(time.RFC3339),
-		"components": entries,
+		"ts":      time.Now().UTC().Format(time.RFC3339),
+		"samples": samples,
 	}
 	return client.SendEvent(ws.TypeEventMetrics, payload)
 }

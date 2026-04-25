@@ -7,7 +7,9 @@ from fastapi.responses import JSONResponse
 
 from ..config.loader import parse_deployment, LoaderError
 from ..config.validator import validate as semantic_validate
+from ..config.hashing import components_hash_from_rendered
 from ..orchestrator import Engine
+from ..storage_deploys import DeployRepository
 
 
 router = APIRouter(prefix="/api")
@@ -67,11 +69,27 @@ async def list_hosts(request: Request):
 
 @router.get("/config")
 async def get_config(request: Request):
-    storage = request.app.state.storage
-    row = await storage.load_config()
-    if row is None:
-        return {"project": None, "yaml_text": None, "applied_at": None}
-    return {"project": row[0], "yaml_text": row[1], "applied_at": row[2]}
+    """Legacy: return the latest applied YAML.
+
+    Now sourced from the 'default' deploy's current version. Falls back to
+    the legacy `config` row if the default deploy has not been populated yet
+    (which can happen on a fresh install that hasn't received an apply).
+    """
+    deploy_repo: DeployRepository = request.app.state.deploy_repo
+    default = await deploy_repo.get_by_name("singleuser", "default")
+    if default is None or default["current_version"] is None:
+        storage = request.app.state.storage
+        row = await storage.load_config()
+        if row is None:
+            return {"project": None, "yaml_text": None, "applied_at": None}
+        return {"project": row[0], "yaml_text": row[1], "applied_at": row[2]}
+    v = await deploy_repo.get_version(default["id"], default["current_version"])
+    try:
+        spec = parse_deployment(v["yaml_text"])
+        project = spec.project
+    except LoaderError:
+        project = None
+    return {"project": project, "yaml_text": v["yaml_text"], "applied_at": v["applied_at"]}
 
 
 @router.post("/config/validate")
@@ -126,12 +144,36 @@ async def post_apply(request: Request):
         raise HTTPException(status_code=400, detail=[e.to_dict() for e in errs])
     engine: Engine = request.app.state.engine
     storage = request.app.state.storage
+    deploy_repo: DeployRepository = request.app.state.deploy_repo
+
     if not dry_run:
+        # Legacy row kept in sync so the old /api/config GET still works
+        # even if the default-deploy path is not yet populated.
         await storage.save_config(spec.project, yaml_text)
-    result = await engine.apply(spec, dry_run=dry_run,
-                                template_store=template_store, files_store=files_store)
+
+    result = await engine.apply(
+        spec, dry_run=dry_run,
+        template_store=template_store, files_store=files_store,
+    )
+
     if not dry_run:
         await storage.record_deploy(spec.project, result.ok, result.to_dict())
+        # Route through the default deploy in the new schema
+        default = await deploy_repo.get_by_name("singleuser", "default")
+        if default is None:
+            default = await deploy_repo.create("default", owner_user_id="singleuser")
+        rendered = engine.render_all(
+            spec, template_store=template_store, files_store=files_store,
+        )
+        ch = components_hash_from_rendered(rendered)
+        await deploy_repo.append_version(
+            default["id"],
+            yaml_text=yaml_text,
+            components_hash=ch,
+            applied_by_user_id="singleuser",
+            result_json=result.to_dict(),
+            kind="apply",
+        )
     return result.to_dict()
 
 
@@ -208,7 +250,13 @@ async def component_logs(request: Request, cid: str, lines: int = 200):
     return {"ok": True, "host_id": host, "component_id": cid, "lines": lines_out}
 
 
-@router.get("/deploys")
-async def deploys(request: Request, limit: int = 20):
+@router.get("/history")
+async def history(request: Request, limit: int = 20):
+    """Legacy deploy apply-event history.
+
+    Renamed from /api/deploys to avoid collision with the new multi-deploy
+    CRUD router in api/deploys.py. Kept for backwards compat during the
+    M1 transition; will move to /api/deploys/{id}/versions semantics in M2+.
+    """
     storage = request.app.state.storage
     return {"history": await storage.history(limit=limit)}

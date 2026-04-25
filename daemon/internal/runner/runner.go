@@ -17,6 +17,7 @@ type ComponentDeploy struct {
 	ConfigArchives []ConfigArchive        `json:"config_archives"`
 	Run            map[string]any         `json:"run"`
 	Healthcheck    map[string]any         `json:"healthcheck"`
+	Metrics        map[string]any         `json:"metrics"` // M2.8: optional Prometheus scrape config
 	Secrets        map[string]string      `json:"secrets"`
 	TimeoutSec     int                    `json:"timeout_sec"`
 	Extra          map[string]any         `json:"-"`
