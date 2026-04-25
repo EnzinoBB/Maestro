@@ -80,6 +80,44 @@ CREATE TABLE IF NOT EXISTS metric_events (
 );
 CREATE INDEX IF NOT EXISTS idx_metric_events_lookup
     ON metric_events(scope, scope_id, ts DESC);
+
+-- Multi-tenant entities (M5.5)
+CREATE TABLE IF NOT EXISTS organizations (
+    id          TEXT PRIMARY KEY,
+    name        TEXT UNIQUE NOT NULL,
+    created_at  REAL NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS org_members (
+    org_id   TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role     TEXT NOT NULL DEFAULT 'member',  -- 'admin' | 'member'
+    PRIMARY KEY (org_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS nodes (
+    id              TEXT PRIMARY KEY,
+    host_id         TEXT UNIQUE NOT NULL,    -- matches the daemon-side host_id
+    node_type       TEXT NOT NULL,           -- 'user' | 'shared'
+    owner_user_id   TEXT REFERENCES users(id),
+    owner_org_id    TEXT REFERENCES organizations(id),
+    label           TEXT,                    -- display name override (optional)
+    created_at      REAL NOT NULL,
+    CHECK (
+        (node_type = 'user' AND owner_user_id IS NOT NULL AND owner_org_id IS NULL) OR
+        (node_type = 'shared' AND owner_org_id IS NOT NULL AND owner_user_id IS NULL)
+    )
+);
+
+CREATE TABLE IF NOT EXISTS node_access (
+    node_id  TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    user_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role     TEXT NOT NULL DEFAULT 'viewer',  -- 'viewer' | 'operator' | 'admin'
+    PRIMARY KEY (node_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_nodes_owner_user ON nodes(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_nodes_owner_org ON nodes(owner_org_id);
 """
 
 _SEED_SINGLEUSER = """

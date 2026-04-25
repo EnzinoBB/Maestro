@@ -25,6 +25,7 @@ class RequestTimeout(Exception):
 
 
 EventHandler = Callable[[str, Message], Awaitable[None]]
+RegisterHandler = Callable[["DaemonConnection"], Awaitable[None]]
 
 
 @dataclass
@@ -58,6 +59,7 @@ class Hub:
     def __init__(self) -> None:
         self._conns: dict[str, DaemonConnection] = {}
         self._event_handlers: list[EventHandler] = []
+        self._register_handlers: list[RegisterHandler] = []
         self._lock = asyncio.Lock()
 
     # ---- connection lifecycle -------------------------------------------
@@ -69,6 +71,14 @@ class Hub:
                 old.close()
             self._conns[conn.host_id] = conn
         log.info("daemon registered: %s", conn.host_id)
+        for h in self._register_handlers:
+            try:
+                await h(conn)
+            except Exception:
+                log.exception("register handler failed for %s", conn.host_id)
+
+    def add_register_handler(self, h: RegisterHandler) -> None:
+        self._register_handlers.append(h)
 
     async def unregister(self, host_id: str) -> None:
         async with self._lock:

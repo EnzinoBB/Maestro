@@ -27,8 +27,10 @@ from .api.deploys import router as deploys_router
 from .api.metrics import router as metrics_router
 from .api.wizard import router as wizard_router
 from .api.auth import router as auth_router
+from .api.nodes import router as nodes_router
 from .auth.users_repo import UsersRepository
-from .auth.middleware import CurrentUserMiddleware
+from .auth.middleware import CurrentUserMiddleware, SINGLEUSER_ID
+from .storage_nodes import NodesRepository, OrganizationsRepository
 from starlette.middleware.sessions import SessionMiddleware
 
 
@@ -59,9 +61,36 @@ async def lifespan(app: FastAPI):
     app.state.deploy_repo = DeployRepository(db_path)
     app.state.metrics_repo = metrics_repo
     app.state.users_repo = UsersRepository(db_path)
+    app.state.nodes_repo = NodesRepository(db_path)
+    app.state.orgs_repo = OrganizationsRepository(db_path)
     app.state.hub = hub
     app.state.engine = engine
     app.state.ui_bus = ui_bus
+
+    # Auto-register a node row when a daemon connects, so admins/users can
+    # claim/share it. In single-user mode we attribute to 'singleuser';
+    # in multi-user mode we attribute to the first admin we can find. If no
+    # admin exists yet (fresh install) we skip and the daemon will be
+    # claimable from the admin UI later.
+    async def _auto_register_node(conn) -> None:
+        nodes = app.state.nodes_repo
+        existing = await nodes.get_by_host_id(conn.host_id)
+        if existing is not None:
+            return
+        # Resolve owner
+        owner = SINGLEUSER_ID
+        # In multi-user mode the singleuser still exists but is dormant.
+        # If a real admin exists, use them; otherwise fall back to singleuser.
+        async with __import__("aiosqlite").connect(db_path) as _db:
+            async with _db.execute(
+                "SELECT id FROM users WHERE is_admin=1 AND id != 'singleuser' "
+                "ORDER BY created_at ASC LIMIT 1"
+            ) as cur:
+                row = await cur.fetchone()
+                if row:
+                    owner = row[0]
+        await nodes.upsert_user_node(host_id=conn.host_id, owner_user_id=owner)
+    hub.add_register_handler(_auto_register_node)
 
     interval = int(os.environ.get("MAESTRO_METRICS_RETENTION_INTERVAL_S", "600"))
     retention_task = asyncio.create_task(retention_loop(
@@ -104,6 +133,7 @@ def create_app() -> FastAPI:
     app.include_router(metrics_router)
     app.include_router(wizard_router)
     app.include_router(auth_router)
+    app.include_router(nodes_router)
     app.include_router(ui_router)
     app.include_router(install_router)
 
