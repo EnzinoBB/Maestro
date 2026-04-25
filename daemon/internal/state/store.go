@@ -28,6 +28,12 @@ type Component struct {
 	LastHCOK      bool
 	UnitName      string
 	WorkDir       string
+	// MetricsEndpoint is the Prometheus /metrics URL declared by the component
+	// (M2.8). Empty when the component has no metrics: stanza.
+	MetricsEndpoint string
+	// MetricsAllow is the comma-separated allow-list of metric names. Stored
+	// as TEXT for schema simplicity; consumers split on "," and trim.
+	MetricsAllow string
 }
 
 type HistoryEntry struct {
@@ -122,6 +128,13 @@ func Open(path string) (Store, error) {
 	if _, err := db.Exec(`ALTER TABLE components ADD COLUMN container_name TEXT`); err != nil {
 		// ignore if column already exists
 	}
+	// M2.8: Prometheus scrape config columns.
+	if _, err := db.Exec(`ALTER TABLE components ADD COLUMN metrics_endpoint TEXT`); err != nil {
+		// ignore if exists
+	}
+	if _, err := db.Exec(`ALTER TABLE components ADD COLUMN metrics_allow TEXT`); err != nil {
+		// ignore if exists
+	}
 	db.SetMaxOpenConns(1) // sqlite: serialize writes
 	return &sqliteStore{db: db}, nil
 }
@@ -133,13 +146,15 @@ func (s *sqliteStore) Get(ctx context.Context, id string) (*Component, error) {
 		`SELECT id, status, COALESCE(component_hash,''), COALESCE(runner,''),
 		         COALESCE(pid,0), COALESCE(container_id,''), COALESCE(container_name,''),
 		         COALESCE(started_at,''), COALESCE(last_hc_at,''), COALESCE(last_hc_ok, 0),
-		         COALESCE(unit_name,''), COALESCE(work_dir,'')
+		         COALESCE(unit_name,''), COALESCE(work_dir,''),
+		         COALESCE(metrics_endpoint,''), COALESCE(metrics_allow,'')
 		 FROM components WHERE id=?`, id)
 	var c Component
 	var startedAt, lastHC string
 	var lastOK int
 	err := row.Scan(&c.ID, &c.Status, &c.ComponentHash, &c.Runner, &c.PID,
-		&c.ContainerID, &c.ContainerName, &startedAt, &lastHC, &lastOK, &c.UnitName, &c.WorkDir)
+		&c.ContainerID, &c.ContainerName, &startedAt, &lastHC, &lastOK, &c.UnitName, &c.WorkDir,
+		&c.MetricsEndpoint, &c.MetricsAllow)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
@@ -167,8 +182,8 @@ func (s *sqliteStore) Upsert(ctx context.Context, c *Component) error {
 		lastHC = c.LastHCAt.UTC().Format(time.RFC3339)
 	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO components(id,status,component_hash,runner,pid,container_id,container_name,started_at,last_hc_at,last_hc_ok,unit_name,work_dir)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+		INSERT INTO components(id,status,component_hash,runner,pid,container_id,container_name,started_at,last_hc_at,last_hc_ok,unit_name,work_dir,metrics_endpoint,metrics_allow)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 		  status=excluded.status,
 		  component_hash=excluded.component_hash,
@@ -180,10 +195,13 @@ func (s *sqliteStore) Upsert(ctx context.Context, c *Component) error {
 		  last_hc_at=excluded.last_hc_at,
 		  last_hc_ok=excluded.last_hc_ok,
 		  unit_name=excluded.unit_name,
-		  work_dir=excluded.work_dir
+		  work_dir=excluded.work_dir,
+		  metrics_endpoint=excluded.metrics_endpoint,
+		  metrics_allow=excluded.metrics_allow
 	`,
 		c.ID, c.Status, c.ComponentHash, c.Runner, c.PID, c.ContainerID, c.ContainerName,
-		startedAt, lastHC, boolToInt(c.LastHCOK), c.UnitName, c.WorkDir)
+		startedAt, lastHC, boolToInt(c.LastHCOK), c.UnitName, c.WorkDir,
+		c.MetricsEndpoint, c.MetricsAllow)
 	return err
 }
 

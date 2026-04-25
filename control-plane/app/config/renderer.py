@@ -99,6 +99,7 @@ class RenderedComponent:
     config_archives: list[RenderedConfigArchive] = field(default_factory=list)
     run: dict[str, Any] = field(default_factory=dict)
     healthcheck: dict[str, Any] | None = None
+    metrics: dict[str, Any] | None = None
     secrets: dict[str, str] = field(default_factory=dict)
 
     def to_payload(self) -> dict[str, Any]:
@@ -122,6 +123,7 @@ class RenderedComponent:
             ],
             "run": self.run,
             "healthcheck": self.healthcheck,
+            "metrics": self.metrics,
             "secrets": self.secrets,
         }
 
@@ -266,6 +268,8 @@ def render_component(
             content_hash=digest,
         ))
 
+    metrics_dict = component.metrics.model_dump() if component.metrics else None
+
     return RenderedComponent(
         component_id=component_id,
         host_id=host_id,
@@ -275,5 +279,6 @@ def render_component(
         config_archives=config_archives,
         run=run_dict,
         healthcheck=hc_dict,
+        metrics=metrics_dict,
         secrets={},  # fase 1: no vault
     )

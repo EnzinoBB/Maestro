@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/maestro-project/maestro-daemon/internal/metrics"
@@ -23,10 +24,33 @@ type Orchestrator struct {
 	Systemd *runner.SystemdRunner
 	Version string
 	Logger  *slog.Logger
-	// PromTargets is the list of component-declared Prometheus /metrics
-	// endpoints the daemon will scrape on each PublishMetrics tick.
-	// Populated by callers (M2.7); empty by default.
-	PromTargets []metrics.PromTarget
+}
+
+// promTargetsFromComps derives a PromTarget per component that has a metrics
+// endpoint configured. The allow-list is parsed from the comma-separated
+// MetricsAllow column. Components without metrics config are skipped.
+func promTargetsFromComps(comps []*state.Component) []metrics.PromTarget {
+	out := make([]metrics.PromTarget, 0, len(comps))
+	for _, c := range comps {
+		if c.MetricsEndpoint == "" {
+			continue
+		}
+		var allow []string
+		if c.MetricsAllow != "" {
+			for _, p := range strings.Split(c.MetricsAllow, ",") {
+				p = strings.TrimSpace(p)
+				if p != "" {
+					allow = append(allow, p)
+				}
+			}
+		}
+		out = append(out, metrics.PromTarget{
+			ComponentID: c.ID,
+			URL:         c.MetricsEndpoint,
+			AllowList:   allow,
+		})
+	}
+	return out
 }
 
 func (o *Orchestrator) logger() *slog.Logger {
@@ -211,6 +235,21 @@ func (o *Orchestrator) handleDeploy(ctx context.Context, msg ws.Message) (string
 		}(),
 		ComponentHash: dep.TargetHash,
 		Runner:        runnerName,
+	}
+	// Persist Prometheus scrape config when the component declares one (M2.8).
+	if dep.Metrics != nil {
+		if ep, ok := dep.Metrics["endpoint"].(string); ok {
+			comp.MetricsEndpoint = ep
+		}
+		if rawAllow, ok := dep.Metrics["allow"].([]any); ok {
+			parts := make([]string, 0, len(rawAllow))
+			for _, v := range rawAllow {
+				if s, ok := v.(string); ok && s != "" {
+					parts = append(parts, s)
+				}
+			}
+			comp.MetricsAllow = strings.Join(parts, ",")
+		}
 	}
 	if res.RuntimeInfo != nil {
 		comp.ContainerID = res.RuntimeInfo.ContainerID
@@ -474,13 +513,13 @@ func (o *Orchestrator) PublishMetrics(ctx context.Context, client *ws.Client) er
 		})
 	}
 
-	// Custom Prometheus scrape (M2.7). Targets come from the component's
-	// config metadata: a future field `metrics: {endpoint, allow}` on
-	// ComponentSpec will populate o.PromTargets at deploy-time. For now
-	// the orchestrator exposes an injectable list (default empty) so the
-	// integration is wired without requiring a schema change yet.
-	if len(o.PromTargets) > 0 {
-		for _, ps := range metrics.CollectPrometheus(ctx, o.PromTargets, 0) {
+	// Custom Prometheus scrape (M2.8). Targets are derived from the Store
+	// components on each tick: any component with a `metrics:` stanza in
+	// its ComponentSpec carries `MetricsEndpoint` + `MetricsAllow` columns
+	// populated at deploy-time. This auto-adapts to deploy/undeploy without
+	// any extra synchronisation.
+	if targets := promTargetsFromComps(comps); len(targets) > 0 {
+		for _, ps := range metrics.CollectPrometheus(ctx, targets, 0) {
 			samples = append(samples, map[string]any{
 				"scope":    ps.Scope,
 				"scope_id": ps.ScopeID,

@@ -144,6 +144,28 @@ class CommandHealth(_Base):
 HealthcheckSpec = HttpHealth | TcpHealth | CommandHealth
 
 
+class MetricsSpec(_Base):
+    """Declares a Prometheus /metrics endpoint to scrape for this component (M2.8).
+
+    The daemon polls `endpoint` on each metrics tick (~30s) and only ingests
+    samples whose name matches `allow`. The allow-list is REQUIRED and must
+    be non-empty: an exporter exposing thousands of series would otherwise
+    flood the CP's metric_samples table.
+    """
+    endpoint: str  # e.g. "http://127.0.0.1:9100/metrics"
+    allow: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check(self):
+        if not self.endpoint or not isinstance(self.endpoint, str):
+            raise ValueError("metrics.endpoint is required")
+        if not (self.endpoint.startswith("http://") or self.endpoint.startswith("https://")):
+            raise ValueError("metrics.endpoint must be an http(s) URL")
+        if not self.allow:
+            raise ValueError("metrics.allow must be non-empty (allow-list of metric names)")
+        return self
+
+
 class ReloadTriggers(_Base):
     code: Literal["hot", "cold"] = "cold"
     config: Literal["hot", "cold"] = "cold"
@@ -161,6 +183,7 @@ class ComponentSpec(_Base):
     reload_triggers: ReloadTriggers | None = None
     depends_on: list[str] = Field(default_factory=list)
     healthcheck: HealthcheckSpec | None = Field(default=None, discriminator="type")
+    metrics: MetricsSpec | None = None
     resources: dict[str, Any] | None = None
 
     @model_validator(mode="after")
