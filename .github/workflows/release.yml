@@ -99,8 +99,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
       - name: Log in to GHCR
@@ -109,13 +107,21 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # NOTE: amd64 only. arm64 used to be in the matrix (linux/arm64 with QEMU
+      # emulation), but `npm ci` for the SPA stage is dog-slow under QEMU
+      # emulation on the ubuntu-latest runners (15-25 min just for the npm
+      # install), pushing total release wall time past 30 min and frequently
+      # timing out. The CP target hosts are amd64 servers; arm64 image is a
+      # nice-to-have and can come back as a parallel matrix job using a real
+      # arm64 runner (or buildx remote node) when there's an actual demand
+      # for it. Daemon binaries below still cross-compile to arm64/darwin.
       - name: Build & push
         id: push
         uses: docker/build-push-action@v5
         with:
           context: .
           file: control-plane/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
           build-args: |
             VERSION=${{ needs.decide.outputs.version }}
