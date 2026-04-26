@@ -11,6 +11,9 @@
 #   --data-dir <path>   Named volume source path (default: docker-managed)
 #   --no-docker-install Fail instead of auto-installing Docker
 #   --upgrade           Pull new image, restart, preserve volume
+#   --auto-update       Install a systemd timer that runs --upgrade weekly
+#                       (Sundays 04:00 local). Use --auto-update=off on a
+#                       previously-installed system to remove the timer.
 #   --uninstall         Stop + remove container; keep volume
 #   --purge             With --uninstall: also remove volume and install dir
 set -euo pipefail
@@ -21,12 +24,15 @@ DATA_DIR=""
 NO_DOCKER_INSTALL=""
 MODE="install"
 PURGE=""
+AUTO_UPDATE=""    # "" | "on" | "off"
 
 INSTALL_DIR="/opt/maestro-cp"
 IMAGE="ghcr.io/enzinobb/maestro-cp"
+TIMER_UNIT="maestro-cp-update.timer"
+SERVICE_UNIT="maestro-cp-update.service"
 
 usage() {
-  sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -37,6 +43,9 @@ while [[ $# -gt 0 ]]; do
     --data-dir)          DATA_DIR="$2"; shift 2;;
     --no-docker-install) NO_DOCKER_INSTALL="1"; shift;;
     --upgrade)           MODE="upgrade"; shift;;
+    --auto-update)       AUTO_UPDATE="on"; shift;;
+    --auto-update=on)    AUTO_UPDATE="on"; shift;;
+    --auto-update=off)   AUTO_UPDATE="off"; shift;;
     --uninstall)         MODE="uninstall"; shift;;
     --purge)             PURGE="1"; shift;;
     -h|--help)           usage 0;;
@@ -49,6 +58,54 @@ require_root() {
     echo "This installer must run as root (prefix with sudo)." >&2
     exit 1
   fi
+}
+
+ensure_compose_plugin() {
+  # Install the Docker Compose v2 plugin when it's missing. We try, in order:
+  #   1) apt-get        (Debian / Ubuntu)
+  #   2) dnf or yum     (RHEL / Fedora / Rocky / Alma / Amazon Linux)
+  #   3) standalone CLI plugin binary into /usr/libexec/docker/cli-plugins/
+  #
+  # Returns 0 when 'docker compose version' works at the end.
+  if docker compose version >/dev/null 2>&1; then
+    return 0
+  fi
+  echo "'docker compose' v2 is missing — attempting to install the plugin …"
+  if command -v apt-get >/dev/null 2>&1; then
+    DEBIAN_FRONTEND=noninteractive apt-get update -y >/dev/null 2>&1 || true
+    if DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin >/dev/null 2>&1; then
+      :
+    else
+      echo "  apt-get failed for docker-compose-plugin (likely missing Docker apt repo)." >&2
+    fi
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y docker-compose-plugin >/dev/null 2>&1 || true
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y docker-compose-plugin >/dev/null 2>&1 || true
+  fi
+  if docker compose version >/dev/null 2>&1; then
+    return 0
+  fi
+  # Last resort: drop the standalone plugin binary into the cli-plugins dir.
+  # https://docs.docker.com/compose/install/linux/#install-the-plugin-manually
+  echo "  Falling back to standalone plugin download …"
+  local arch
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64|amd64) arch="x86_64";;
+    aarch64|arm64) arch="aarch64";;
+    *) echo "  unsupported arch for compose plugin fallback: $arch" >&2; return 1;;
+  esac
+  local plugin_dir="/usr/libexec/docker/cli-plugins"
+  mkdir -p "$plugin_dir"
+  local url="https://github.com/docker/compose/releases/latest/download/docker-compose-linux-${arch}"
+  if curl -fsSL --connect-timeout 10 --max-time 120 "$url" -o "$plugin_dir/docker-compose"; then
+    chmod 0755 "$plugin_dir/docker-compose"
+  else
+    echo "  could not download $url" >&2
+    return 1
+  fi
+  docker compose version >/dev/null 2>&1
 }
 
 ensure_docker() {
@@ -64,8 +121,10 @@ ensure_docker() {
     echo "Installing Docker via get.docker.com …"
     curl -fsSL https://get.docker.com | sh
   fi
-  if ! docker compose version >/dev/null 2>&1; then
-    echo "Docker installed but 'docker compose' v2 is not available. Install it manually." >&2
+  if ! ensure_compose_plugin; then
+    echo "Failed to install 'docker compose' v2 automatically." >&2
+    echo "Tried: apt/dnf/yum 'docker-compose-plugin' package + standalone plugin download." >&2
+    echo "Install it manually for your distro and re-run." >&2
     exit 3
   fi
   # Start the daemon if it's installed but not running.
@@ -181,8 +240,56 @@ do_uninstall() {
   fi
 }
 
+install_auto_update_timer() {
+  if ! command -v systemctl >/dev/null 2>&1; then
+    echo "  systemd not available; --auto-update needs systemd." >&2
+    return 1
+  fi
+  cat > "/etc/systemd/system/${SERVICE_UNIT}" <<EOF
+[Unit]
+Description=Maestro Control Plane self-upgrade (latest image)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=${INSTALL_DIR}/install-cp.sh --upgrade --port ${PORT}
+EOF
+  cat > "/etc/systemd/system/${TIMER_UNIT}" <<EOF
+[Unit]
+Description=Maestro Control Plane weekly update
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00
+Persistent=true
+RandomizedDelaySec=30m
+
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now "${TIMER_UNIT}"
+  echo "Auto-update timer installed: $(systemctl list-timers --no-pager "${TIMER_UNIT}" | sed -n '2p')"
+}
+
+remove_auto_update_timer() {
+  if ! command -v systemctl >/dev/null 2>&1; then return 0; fi
+  systemctl disable --now "${TIMER_UNIT}" 2>/dev/null || true
+  rm -f "/etc/systemd/system/${TIMER_UNIT}" "/etc/systemd/system/${SERVICE_UNIT}"
+  systemctl daemon-reload || true
+  echo "Auto-update timer removed."
+}
+
+apply_auto_update_flag() {
+  case "$AUTO_UPDATE" in
+    on)  install_auto_update_timer;;
+    off) remove_auto_update_timer;;
+    "")  : ;;
+  esac
+}
+
 case "$MODE" in
-  install)   do_install;;
-  upgrade)   do_upgrade;;
-  uninstall) do_uninstall;;
+  install)   do_install; apply_auto_update_flag;;
+  upgrade)   do_upgrade; apply_auto_update_flag;;
+  uninstall) remove_auto_update_timer; do_uninstall;;
 esac

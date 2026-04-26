@@ -18,6 +18,8 @@
 #   --from-github        Force GitHub as binary source
 #   --insecure           Accept self-signed TLS / http CP (sets daemon insecure flag)
 #   --upgrade            Download new binary, restart service
+#   --auto-update        Install a systemd timer that runs --upgrade weekly
+#                        (Sundays 04:30 local). Use --auto-update=off to remove.
 #   --uninstall          Stop + remove service and binary
 #   --purge              With --uninstall: also remove config and state dir
 set -euo pipefail
@@ -37,6 +39,10 @@ FROM_GITHUB=""
 INSECURE=""
 MODE="install"
 PURGE=""
+AUTO_UPDATE=""
+
+UPDATE_TIMER_UNIT="maestro-daemon-update.timer"
+UPDATE_SERVICE_UNIT="maestro-daemon-update.service"
 
 usage() {
   sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'
@@ -51,10 +57,13 @@ while [[ $# -gt 0 ]]; do
     --version)     VERSION="$2"; shift 2;;
     --from-github) FROM_GITHUB="1"; shift;;
     --insecure)    INSECURE="1"; shift;;
-    --upgrade)     MODE="upgrade"; shift;;
-    --uninstall)   MODE="uninstall"; shift;;
-    --purge)       PURGE="1"; shift;;
-    -h|--help)     usage 0;;
+    --upgrade)         MODE="upgrade"; shift;;
+    --auto-update)     AUTO_UPDATE="on"; shift;;
+    --auto-update=on)  AUTO_UPDATE="on"; shift;;
+    --auto-update=off) AUTO_UPDATE="off"; shift;;
+    --uninstall)       MODE="uninstall"; shift;;
+    --purge)           PURGE="1"; shift;;
+    -h|--help)         usage 0;;
     *) echo "unknown argument: $1" >&2; usage 2;;
   esac
 done
@@ -317,8 +326,70 @@ do_uninstall() {
   fi
 }
 
+install_auto_update_timer() {
+  if [[ "$SERVICE_KIND" != "systemd" ]]; then
+    echo "  --auto-update currently supports systemd only (this host is $SERVICE_KIND)." >&2
+    return 1
+  fi
+  # Persist enough context so the timer can re-invoke the installer with the
+  # same CP_URL. We keep CP_URL in /etc/maestrod/installer.env (no secrets).
+  mkdir -p "$CFG_DIR"
+  printf 'CP_URL=%q\n' "$CP_URL" > "$CFG_DIR/installer.env"
+  chmod 0600 "$CFG_DIR/installer.env"
+
+  # Cache the installer script so the timer doesn't depend on network DNS at
+  # launch (only the binary download needs network).
+  install -m 0755 "$0" "/usr/local/sbin/maestro-install-daemon.sh" 2>/dev/null || \
+    cp -f "$0" "/usr/local/sbin/maestro-install-daemon.sh" 2>/dev/null || true
+
+  cat > "/etc/systemd/system/${UPDATE_SERVICE_UNIT}" <<EOF
+[Unit]
+Description=Maestro daemon self-upgrade (latest binary)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=$CFG_DIR/installer.env
+ExecStart=/usr/local/sbin/maestro-install-daemon.sh --upgrade --cp-url \${CP_URL}
+EOF
+  cat > "/etc/systemd/system/${UPDATE_TIMER_UNIT}" <<EOF
+[Unit]
+Description=Maestro daemon weekly update
+
+[Timer]
+OnCalendar=Sun *-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=30m
+
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl daemon-reload
+  systemctl enable --now "${UPDATE_TIMER_UNIT}"
+  echo "Auto-update timer installed: $(systemctl list-timers --no-pager "${UPDATE_TIMER_UNIT}" | sed -n '2p')"
+}
+
+remove_auto_update_timer() {
+  if [[ "$SERVICE_KIND" != "systemd" ]]; then return 0; fi
+  systemctl disable --now "${UPDATE_TIMER_UNIT}" 2>/dev/null || true
+  rm -f "/etc/systemd/system/${UPDATE_TIMER_UNIT}" "/etc/systemd/system/${UPDATE_SERVICE_UNIT}"
+  rm -f "/usr/local/sbin/maestro-install-daemon.sh"
+  rm -f "$CFG_DIR/installer.env" 2>/dev/null || true
+  systemctl daemon-reload || true
+  echo "Auto-update timer removed."
+}
+
+apply_auto_update_flag() {
+  case "$AUTO_UPDATE" in
+    on)  install_auto_update_timer;;
+    off) remove_auto_update_timer;;
+    "")  : ;;
+  esac
+}
+
 case "$MODE" in
-  install)   do_install;;
-  upgrade)   do_upgrade;;
-  uninstall) do_uninstall;;
+  install)   do_install; apply_auto_update_flag;;
+  upgrade)   do_upgrade; apply_auto_update_flag;;
+  uninstall) remove_auto_update_timer; do_uninstall;;
 esac
