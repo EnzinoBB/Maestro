@@ -112,7 +112,10 @@ export function Shell({ children }: { children: ReactNode }) {
 
 function UserMenu() {
   const { state, logout } = useAuth();
-  if (state.status === "loading" || state.status === "anonymous") return null;
+  // The shell is only mounted under <RequireAuth>, which gates out
+  // 'loading' / 'anonymous' / 'needs-setup'. Narrow the type explicitly
+  // so we can safely read .username.
+  if (state.status !== "authenticated" && state.status !== "single-user") return null;
   return (
     <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
       <span className="small dim mono" title={state.status === "single-user" ? "Single-user mode" : undefined}>

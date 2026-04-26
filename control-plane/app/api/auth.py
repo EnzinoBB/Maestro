@@ -29,11 +29,14 @@ async def _read_json(request: Request) -> dict:
 
 @router.post("/setup-admin")
 async def post_setup_admin(request: Request):
-    """Create the first real (non-singleuser) admin.
+    """Create the first real (non-singleuser) admin AND log them in.
 
     Only succeeds while the users table contains just the 'singleuser'
     row. Subsequent calls return 409 — further users are created via
     admin UI (M5.5).
+
+    On success the response sets the session cookie so the browser is
+    immediately authenticated, no separate /login call needed.
     """
     users = _users(request)
     if await users.count_non_singleuser() > 0:
@@ -52,6 +55,9 @@ async def post_setup_admin(request: Request):
         )
     except UserAlreadyExists as e:
         raise HTTPException(status_code=409, detail=str(e))
+    # Auto-login: the operator who just set up the admin shouldn't have to
+    # immediately re-enter the credentials they typed two seconds ago.
+    request.session["user_id"] = u["id"]
     return {"id": u["id"], "username": u["username"], "is_admin": u["is_admin"]}
 
 
@@ -80,21 +86,29 @@ async def post_logout(request: Request):
 
 @router.get("/me")
 async def get_me(request: Request):
-    uid = getattr(request.state, "user_id", None)
-    if not uid:
-        return {
-            "authenticated": False,
-            "single_user_mode": is_single_user_mode(),
-        }
     users = _users(request)
-    try:
-        u = await users.get(uid)
-    except UserNotFound:
-        return {"authenticated": False, "single_user_mode": is_single_user_mode()}
+    smode = is_single_user_mode()
+    # First-run flag: in multi-user mode with no real admin yet, the login
+    # page should switch to a "create your admin" form instead of asking
+    # for credentials that don't exist.
+    needs_setup = (not smode) and (await users.count_non_singleuser() == 0)
+
+    uid = getattr(request.state, "user_id", None)
+    if uid:
+        try:
+            u = await users.get(uid)
+            return {
+                "authenticated": True,
+                "single_user_mode": smode,
+                "needs_setup": needs_setup,
+                "id": u["id"],
+                "username": u["username"],
+                "is_admin": u["is_admin"],
+            }
+        except UserNotFound:
+            pass
     return {
-        "authenticated": True,
-        "single_user_mode": is_single_user_mode(),
-        "id": u["id"],
-        "username": u["username"],
-        "is_admin": u["is_admin"],
+        "authenticated": False,
+        "single_user_mode": smode,
+        "needs_setup": needs_setup,
     }

@@ -22,7 +22,7 @@ function RequireAuth({ children }: { children: ReactNode }) {
   if (state.status === "loading") {
     return <div className="cp-page"><div className="cp-skel" style={{ height: 120 }} /></div>;
   }
-  if (state.status === "anonymous") {
+  if (state.status === "anonymous" || state.status === "needs-setup") {
     return <Navigate to="/login" replace state={{ from: loc.pathname }} />;
   }
   return <>{children}</>;
