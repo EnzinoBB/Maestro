@@ -60,10 +60,49 @@ require_root() {
   fi
 }
 
+ensure_docker_apt_repo() {
+  # Configure Docker's official apt repository so docker-compose-plugin
+  # is available. Idempotent — does nothing if the repo already exists.
+  # Requires apt-get + curl + lsb-release-style /etc/os-release info.
+  if [[ -f /etc/apt/sources.list.d/docker.list ]] || \
+     grep -rqs "download.docker.com" /etc/apt/sources.list.d/ 2>/dev/null; then
+    return 0
+  fi
+  if [[ ! -r /etc/os-release ]]; then
+    return 1
+  fi
+  # shellcheck disable=SC1091
+  . /etc/os-release
+  local distro="${ID:-}"
+  local codename="${VERSION_CODENAME:-}"
+  case "$distro" in
+    ubuntu|debian) ;;
+    *) return 1;;  # Not a Debian-family system; caller will try fallbacks.
+  esac
+  if [[ -z "$codename" ]]; then
+    return 1
+  fi
+  echo "  Adding Docker's official apt repository for ${distro} ${codename} …"
+  DEBIAN_FRONTEND=noninteractive apt-get update -y >/dev/null 2>&1 || true
+  DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    ca-certificates curl gnupg >/dev/null 2>&1 || true
+  install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL "https://download.docker.com/linux/${distro}/gpg" \
+    -o /etc/apt/keyrings/docker.asc 2>/dev/null
+  chmod a+r /etc/apt/keyrings/docker.asc 2>/dev/null || true
+  local arch
+  arch="$(dpkg --print-architecture 2>/dev/null || echo amd64)"
+  echo "deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/${distro} ${codename} stable" \
+    > /etc/apt/sources.list.d/docker.list
+  DEBIAN_FRONTEND=noninteractive apt-get update -y >/dev/null 2>&1 || true
+  return 0
+}
+
 ensure_compose_plugin() {
   # Install the Docker Compose v2 plugin when it's missing. We try, in order:
-  #   1) apt-get        (Debian / Ubuntu)
-  #   2) dnf or yum     (RHEL / Fedora / Rocky / Alma / Amazon Linux)
+  #   1) apt-get with the Docker official repo wired up if necessary
+  #      (Debian / Ubuntu)
+  #   2) dnf or yum (RHEL / Fedora / Rocky / Alma / Amazon Linux)
   #   3) standalone CLI plugin binary into /usr/libexec/docker/cli-plugins/
   #
   # Returns 0 when 'docker compose version' works at the end.
@@ -72,11 +111,11 @@ ensure_compose_plugin() {
   fi
   echo "'docker compose' v2 is missing — attempting to install the plugin …"
   if command -v apt-get >/dev/null 2>&1; then
-    DEBIAN_FRONTEND=noninteractive apt-get update -y >/dev/null 2>&1 || true
-    if DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin >/dev/null 2>&1; then
-      :
-    else
-      echo "  apt-get failed for docker-compose-plugin (likely missing Docker apt repo)." >&2
+    # First try as-is; on hosts with the Docker repo already configured this
+    # one shot succeeds without us touching apt sources.
+    if ! DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin >/dev/null 2>&1; then
+      ensure_docker_apt_repo || true
+      DEBIAN_FRONTEND=noninteractive apt-get install -y docker-compose-plugin >/dev/null 2>&1 || true
     fi
   elif command -v dnf >/dev/null 2>&1; then
     dnf install -y docker-compose-plugin >/dev/null 2>&1 || true
