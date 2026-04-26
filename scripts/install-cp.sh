@@ -14,6 +14,11 @@
 #   --auto-update       Install a systemd timer that runs --upgrade weekly
 #                       (Sundays 04:00 local). Use --auto-update=off on a
 #                       previously-installed system to remove the timer.
+#   --import-db <path>  Copy an existing CP SQLite DB into the new install
+#                       before starting the container. Implies --data-dir
+#                       (defaults to /opt/maestro-cp-data) so the imported
+#                       DB lives on a host path, not in a docker volume.
+#                       Refuses to overwrite a non-empty target.
 #   --uninstall         Stop + remove container; keep volume
 #   --purge             With --uninstall: also remove volume and install dir
 set -euo pipefail
@@ -25,6 +30,7 @@ NO_DOCKER_INSTALL=""
 MODE="install"
 PURGE=""
 AUTO_UPDATE=""    # "" | "on" | "off"
+IMPORT_DB=""      # path to an existing cp DB to copy into --data-dir/cp.db
 
 INSTALL_DIR="/opt/maestro-cp"
 IMAGE="ghcr.io/enzinobb/maestro-cp"
@@ -46,6 +52,7 @@ while [[ $# -gt 0 ]]; do
     --auto-update)       AUTO_UPDATE="on"; shift;;
     --auto-update=on)    AUTO_UPDATE="on"; shift;;
     --auto-update=off)   AUTO_UPDATE="off"; shift;;
+    --import-db)         IMPORT_DB="$2"; shift 2;;
     --uninstall)         MODE="uninstall"; shift;;
     --purge)             PURGE="1"; shift;;
     -h|--help)           usage 0;;
@@ -219,6 +226,53 @@ wait_healthy() {
   return 4
 }
 
+check_target_port_free() {
+  # Refuse to install when the target port is held by something else.
+  # Common cause: an old manual uvicorn from Phase-1 development is still
+  # running. We list the holder so the operator knows what to stop.
+  if ! command -v ss >/dev/null 2>&1; then
+    return 0   # can't check; trust docker to surface the issue
+  fi
+  if ss -ltn "sport = :${PORT}" 2>/dev/null | grep -q LISTEN; then
+    echo "Port ${PORT} is already in use." >&2
+    echo "Holder(s):" >&2
+    sudo -n ss -ltnp "sport = :${PORT}" 2>/dev/null | sed -n '2,$p' >&2 || \
+      ss -ltn "sport = :${PORT}" 2>/dev/null | sed -n '2,$p' >&2
+    echo "Stop the existing process (e.g. 'sudo pkill -f \"uvicorn app.main:app\"')," >&2
+    echo "or re-run with --port <N> to use a different port." >&2
+    exit 8
+  fi
+}
+
+import_existing_db() {
+  # When --import-db is set, copy the source DB into the data-dir BEFORE
+  # the container starts. We force --data-dir on so the imported file
+  # ends up on the host filesystem (named-volume copy is awkward and
+  # would need docker cp post-up).
+  if [[ -z "$IMPORT_DB" ]]; then
+    return 0
+  fi
+  if [[ ! -r "$IMPORT_DB" ]]; then
+    echo "--import-db: source not readable: $IMPORT_DB" >&2
+    exit 9
+  fi
+  if [[ -z "$DATA_DIR" ]]; then
+    DATA_DIR="/opt/maestro-cp-data"
+    echo "--import-db: no --data-dir given, defaulting to $DATA_DIR"
+  fi
+  mkdir -p "$DATA_DIR"
+  local target="$DATA_DIR/cp.db"
+  if [[ -e "$target" && -s "$target" ]]; then
+    echo "--import-db: refusing to overwrite non-empty $target" >&2
+    echo "Move it out of the way first, or run --uninstall --purge." >&2
+    exit 9
+  fi
+  echo "Importing $IMPORT_DB → $target …"
+  install -m 0644 "$IMPORT_DB" "$target"
+  # The container runs as root inside, so 0644 is enough for the file.
+  # If a future image switches to a non-root user, chown the data dir.
+}
+
 do_install() {
   require_root
   if [[ -f "$INSTALL_DIR/docker-compose.yml" ]]; then
@@ -226,7 +280,9 @@ do_install() {
     echo "Use --upgrade to change version/port, or --uninstall first." >&2
     exit 6
   fi
+  check_target_port_free
   ensure_docker
+  import_existing_db
   render_compose
   # Preserve a copy of this script at $INSTALL_DIR so admins can re-invoke
   # --upgrade / --uninstall without re-downloading. Skip if we were piped
