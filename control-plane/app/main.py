@@ -200,9 +200,19 @@ def create_app() -> FastAPI:
 
     # Static web: prefer the new SPA bundle (web-ui/dist) when present;
     # fall back to the legacy HTMX dashboard (control-plane/web) during transition.
-    here = Path(__file__).parent.parent           # control-plane/
-    repo_root = here.parent                       # repo root
-    new_ui = repo_root / "web-ui" / "dist"
+    #
+    # We probe two candidate locations because the layout differs between dev
+    # and the docker image:
+    #   dev    : repo_root/web-ui/dist     (sibling of control-plane/)
+    #   docker : /app/web-ui/dist          (Dockerfile COPYs the build there;
+    #            equivalent to here/"web-ui"/"dist" since here == /app)
+    here = Path(__file__).parent.parent           # control-plane/ in dev, /app in docker
+    repo_root = here.parent                       # repo root in dev,    /     in docker
+    spa_candidates = [
+        here / "web-ui" / "dist",                 # docker layout
+        repo_root / "web-ui" / "dist",            # dev layout
+    ]
+    new_ui = next((p for p in spa_candidates if p.is_dir()), spa_candidates[-1])
     legacy_web = here / "web"
 
     if new_ui.is_dir():
