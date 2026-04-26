@@ -12,6 +12,11 @@ dependencies = [
     "uvicorn[standard]>=0.27",
     "pydantic>=2.6",
     "python-multipart>=0.0.9",
+    # Session middleware (M5) needs itsdangerous for signed-cookie sessions.
+    # Starlette imports it lazily inside SessionMiddleware so the failure
+    # only surfaces at app startup, not at install time. Pin it explicitly
+    # so the docker image always has it.
+    "itsdangerous>=2.2",
     # YAML / templating
     "pyyaml>=6.0",
     "jinja2>=3.1",

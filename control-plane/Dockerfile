@@ -26,7 +26,7 @@ WORKDIR /app
 # blocked by readme = "../README.md" in pyproject (outside build context);
 # revisit as part of Phase 3 packaging hardening.
 RUN pip install --no-cache-dir fastapi 'uvicorn[standard]' pydantic pyyaml jinja2 \
-    sqlalchemy aiosqlite websockets httpx click mcp python-multipart
+    sqlalchemy aiosqlite websockets httpx click mcp python-multipart itsdangerous
 
 COPY control-plane/app/ ./app/
 COPY control-plane/web/ ./web/
