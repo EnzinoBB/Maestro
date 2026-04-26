@@ -17,7 +17,15 @@ RUN set -eu; \
     done; \
     cd /out && sha256sum maestrod-* > SHA256SUMS
 
-# ---- Stage 2: CP runtime ----
+# ---- Stage 2: build the React SPA ----
+FROM node:20-alpine AS web-ui-builder
+WORKDIR /web-ui
+COPY web-ui/package.json web-ui/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY web-ui/ ./
+RUN npm run build
+
+# ---- Stage 3: CP runtime ----
 FROM python:3.12-slim
 
 WORKDIR /app
@@ -30,6 +38,8 @@ RUN pip install --no-cache-dir fastapi 'uvicorn[standard]' pydantic pyyaml jinja
 
 COPY control-plane/app/ ./app/
 COPY control-plane/web/ ./web/
+# SPA bundle (M4): main.py prefers this over the legacy HTMX 'web/' when present.
+COPY --from=web-ui-builder /web-ui/dist/ ./web-ui/dist/
 COPY control-plane/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY scripts/install-daemon.sh /opt/maestro-cp/scripts/install-daemon.sh
 COPY --from=daemon-builder /out/ /opt/maestro-cp/dist/
