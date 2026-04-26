@@ -4,12 +4,14 @@ import { useQueryClient } from "@tanstack/react-query";
 export type AuthState =
   | { status: "loading" }
   | { status: "single-user"; id: string; username: string; is_admin: boolean }
+  | { status: "needs-setup" }
   | { status: "anonymous"; single_user_mode: boolean }
   | { status: "authenticated"; id: string; username: string; is_admin: boolean };
 
 type AuthCtx = {
   state: AuthState;
   login: (username: string, password: string) => Promise<void>;
+  setupAdmin: (username: string, password: string, email?: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 };
@@ -25,6 +27,9 @@ async function fetchMe(): Promise<AuthState> {
   }
   if (body.authenticated) {
     return { status: "authenticated", id: body.id, username: body.username, is_admin: !!body.is_admin };
+  }
+  if (body.needs_setup) {
+    return { status: "needs-setup" };
   }
   return { status: "anonymous", single_user_mode: !!body.single_user_mode };
 }
@@ -53,6 +58,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refresh();
   };
 
+  const setupAdmin = async (username: string, password: string, email?: string) => {
+    const r = await fetch("/api/auth/setup-admin", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password, email }),
+    });
+    if (!r.ok) {
+      const body = await r.text();
+      throw new Error(body || `setup-admin failed (${r.status})`);
+    }
+    // The backend already set the session cookie; refresh picks it up.
+    await refresh();
+  };
+
   const logout = async () => {
     await fetch("/api/auth/logout", {
       method: "POST",
@@ -63,7 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => { refresh(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return <Ctx.Provider value={{ state, login, logout, refresh }}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={{ state, login, setupAdmin, logout, refresh }}>{children}</Ctx.Provider>;
 }
 
 export function useAuth() {

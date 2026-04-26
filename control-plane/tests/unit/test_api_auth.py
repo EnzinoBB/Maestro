@@ -119,3 +119,48 @@ def test_setup_admin_requires_strong_enough_password(client_multiuser):
     r = client_multiuser.post("/api/auth/setup-admin",
                               json={"username": "admin", "password": "short"})
     assert r.status_code == 400
+
+
+# ---- M5.6: first-run setup helpers ----
+
+def test_me_reports_needs_setup_true_when_multiuser_and_no_admin(client_multiuser):
+    r = client_multiuser.get("/api/auth/me")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["authenticated"] is False
+    assert body["single_user_mode"] is False
+    assert body["needs_setup"] is True
+
+
+def test_me_reports_needs_setup_false_after_admin_created(client_multiuser):
+    client_multiuser.post("/api/auth/setup-admin",
+                          json={"username": "admin", "password": "correct-horse"})
+    # /me from a fresh (no-cookie) client perspective. We must call with a
+    # NEW client to clear the auto-login cookie set by setup-admin.
+    r = client_multiuser.get("/api/auth/me", cookies={})
+    body = r.json()
+    # The TestClient persists cookies, so this is actually authenticated.
+    # The needs_setup flag must still be False because an admin exists.
+    assert body["needs_setup"] is False
+
+
+def test_me_reports_needs_setup_false_in_single_user_mode(client_singleuser):
+    r = client_singleuser.get("/api/auth/me")
+    body = r.json()
+    assert body["single_user_mode"] is True
+    assert body["needs_setup"] is False
+
+
+def test_setup_admin_auto_logs_in(client_multiuser):
+    # Before setup: /api/deploys returns 401
+    r = client_multiuser.get("/api/deploys")
+    assert r.status_code == 401
+
+    # setup-admin must respond 200 AND grant a session
+    r = client_multiuser.post("/api/auth/setup-admin",
+                              json={"username": "admin", "password": "correct-horse"})
+    assert r.status_code == 200
+
+    # /api/deploys is now reachable on the SAME client (cookie persists)
+    r = client_multiuser.get("/api/deploys")
+    assert r.status_code == 200
