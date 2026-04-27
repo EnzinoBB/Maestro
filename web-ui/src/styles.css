@@ -341,3 +341,11 @@ a { color: inherit; text-decoration: none; }
 .cp-comp-row__head { display: grid; grid-template-columns: 24px 2fr 1fr 1fr 1fr 1fr auto; gap: 16px; align-items: center; padding: 10px 16px; cursor: pointer; }
 .cp-comp-row__head:hover { background: var(--bg-2); }
 .cp-comp-row__body { padding: 16px 16px 16px 56px; background: var(--bg); border-top: 1px solid var(--border); }
+
+/* ---- v0.3 additions: animations, danger button, popover/modal/spinner ---- */
+@keyframes cp-slide-down { from { transform: translateY(-6px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes cp-spin { to { transform: rotate(360deg); } }
+.cp-btn--danger { color: var(--err); border-color: color-mix(in oklch, var(--err) 30%, var(--border)); }
+.cp-popover { background: var(--bg-1); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: 0 10px 32px rgba(0,0,0,0.5); animation: cp-slide-down 140ms ease-out; }
+.cp-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--bg-1); border: 1px solid var(--border); border-radius: 6px; animation: cp-slide-down 160ms ease-out; }
+.cp-spinner { width: 56px; height: 56px; border-radius: 999px; border: 2px solid var(--accent); border-top-color: transparent; animation: cp-spin 900ms linear infinite; }

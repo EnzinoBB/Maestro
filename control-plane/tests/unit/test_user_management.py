@@ -125,3 +125,47 @@ def test_change_password_unauthenticated_is_401(client):
         "old_password": "correct-horse", "new_password": "new-strong-pw",
     })
     assert r.status_code == 401
+
+
+# ---- POST /api/admin/users/{id}/reset-password (v0.3) ----
+
+def test_admin_reset_user_password_returns_new_pw(client):
+    r = client.post("/api/admin/users", json={
+        "username": "alice", "password": "old-passphrase",
+    })
+    uid = r.json()["id"]
+    r = client.post(f"/api/admin/users/{uid}/reset-password")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["id"] == uid
+    assert body["username"] == "alice"
+    new_pw = body["new_password"]
+    assert isinstance(new_pw, str) and len(new_pw) >= 10
+    # The new password actually works for login; the old one no longer does.
+    client.post("/api/auth/logout")
+    r = client.post("/api/auth/login", json={"username": "alice", "password": new_pw})
+    assert r.status_code == 200
+    client.post("/api/auth/logout")
+    r = client.post("/api/auth/login", json={"username": "alice", "password": "old-passphrase"})
+    assert r.status_code == 401
+
+
+def test_reset_password_refuses_singleuser_row(client):
+    r = client.post("/api/admin/users/singleuser/reset-password")
+    assert r.status_code == 400
+
+
+def test_reset_password_404_on_unknown_user(client):
+    r = client.post("/api/admin/users/usr_nope/reset-password")
+    assert r.status_code == 404
+
+
+def test_reset_password_requires_admin(client):
+    r = client.post("/api/admin/users", json={
+        "username": "viewer", "password": "viewer-passphrase", "is_admin": False,
+    })
+    other_id = r.json()["id"]
+    client.post("/api/auth/logout")
+    client.post("/api/auth/login", json={"username": "viewer", "password": "viewer-passphrase"})
+    r = client.post(f"/api/admin/users/{other_id}/reset-password")
+    assert r.status_code == 403
