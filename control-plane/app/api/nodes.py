@@ -1,13 +1,14 @@
-"""REST router for nodes + organizations + admin user mgmt (M5.5 / M7)."""
+"""REST router for nodes + organizations + admin user mgmt (M5.5 / M7 / v0.3)."""
 from __future__ import annotations
 
 import os
+import secrets
 
 from fastapi import APIRouter, HTTPException, Request
 
 from ..auth.middleware import SINGLEUSER_ID, is_single_user_mode
 from ..auth.passwords import hash_password
-from ..auth.users_repo import UserAlreadyExists
+from ..auth.users_repo import UserAlreadyExists, UserNotFound
 
 
 router = APIRouter(prefix="/api")
@@ -204,3 +205,31 @@ async def create_org(request: Request):
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     return o
+
+
+@router.post("/admin/users/{user_id}/reset-password")
+async def admin_reset_user_password(request: Request, user_id: str):
+    """Generate a fresh password for the user and return it once.
+
+    Admin-only. The new password is shown to the calling admin who is
+    responsible for handing it over via a secure channel — Maestro never
+    stores the plaintext. The user's old password is invalidated atomically.
+
+    Refused on the singleuser fixture row (it has no real password).
+    """
+    uid, _ = _current_user(request)
+    is_admin = await _resolve_is_admin(request, uid)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="admin only")
+    if user_id == SINGLEUSER_ID:
+        raise HTTPException(status_code=400, detail="cannot reset password of the system 'singleuser' row")
+    users = request.app.state.users_repo
+    try:
+        u = await users.get(user_id)
+    except UserNotFound:
+        raise HTTPException(status_code=404, detail="user not found")
+    # 12 chars from a 64-char alphabet ≈ 72 bits of entropy. Plenty for a
+    # short-lived reset shown once to an admin who will paste it elsewhere.
+    new_pw = secrets.token_urlsafe(9)  # ~12 chars after b64
+    await users.set_password(u["id"], hash_password(new_pw))
+    return {"id": u["id"], "username": u["username"], "new_password": new_pw}
