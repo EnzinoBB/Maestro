@@ -1,4 +1,4 @@
-"""REST router for nodes + organizations + admin user listing (M5.5)."""
+"""REST router for nodes + organizations + admin user mgmt (M5.5 / M7)."""
 from __future__ import annotations
 
 import os
@@ -6,6 +6,8 @@ import os
 from fastapi import APIRouter, HTTPException, Request
 
 from ..auth.middleware import SINGLEUSER_ID, is_single_user_mode
+from ..auth.passwords import hash_password
+from ..auth.users_repo import UserAlreadyExists
 
 
 router = APIRouter(prefix="/api")
@@ -114,6 +116,50 @@ async def admin_list_users(request: Request):
             for r in rows
         ],
         "single_user_mode": is_single_user_mode(),
+    }
+
+
+@router.post("/admin/users", status_code=201)
+async def admin_create_user(request: Request):
+    """Create a new user (admin only). M7.
+
+    Body: {"username": str, "password": str (8+ chars), "email": str?, "is_admin": bool?}
+    """
+    uid, _ = _current_user(request)
+    is_admin = await _resolve_is_admin(request, uid)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="admin only")
+    body = {}
+    raw = await request.body()
+    if raw:
+        import json as _json
+        try:
+            body = _json.loads(raw.decode("utf-8"))
+        except Exception:
+            raise HTTPException(status_code=400, detail="invalid JSON body")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON body must be an object")
+    username = body.get("username")
+    password = body.get("password")
+    if not username or not isinstance(username, str):
+        raise HTTPException(status_code=400, detail="'username' is required")
+    if not password or not isinstance(password, str) or len(password) < 8:
+        raise HTTPException(status_code=400, detail="'password' must be 8+ characters")
+    if username == SINGLEUSER_ID:
+        raise HTTPException(status_code=400, detail=f"'{SINGLEUSER_ID}' is a reserved username")
+    users = request.app.state.users_repo
+    try:
+        u = await users.create(
+            username=username,
+            password_hash=hash_password(password),
+            email=body.get("email"),
+            is_admin=bool(body.get("is_admin", False)),
+        )
+    except UserAlreadyExists as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {
+        "id": u["id"], "username": u["username"], "email": u["email"],
+        "is_admin": u["is_admin"], "created_at": u["created_at"],
     }
 
 
