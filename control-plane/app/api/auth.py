@@ -84,6 +84,37 @@ async def post_logout(request: Request):
     return {"ok": True}
 
 
+@router.post("/change-password")
+async def post_change_password(request: Request):
+    """Change the current user's password.
+
+    Requires the old password (defence in depth: a stolen session can't
+    quietly lock the user out by setting a new password). Logs the user
+    out of all *other* sessions implicitly because the session secret
+    rotation isn't wired yet — for now the cookie keeps working in the
+    same browser tab.
+    """
+    uid = getattr(request.state, "user_id", None)
+    if not uid or uid == SINGLEUSER_ID:
+        raise HTTPException(status_code=401, detail="authentication required")
+    body = await _read_json(request)
+    old = body.get("old_password")
+    new = body.get("new_password")
+    if not old or not new:
+        raise HTTPException(status_code=400, detail="'old_password' and 'new_password' required")
+    if not isinstance(new, str) or len(new) < 8:
+        raise HTTPException(status_code=400, detail="'new_password' must be 8+ characters")
+    users = _users(request)
+    try:
+        u = await users.get(uid)
+    except UserNotFound:
+        raise HTTPException(status_code=401, detail="user not found")
+    if not verify_password(old, u["password_hash"] or ""):
+        raise HTTPException(status_code=403, detail="old password is wrong")
+    await users.set_password(uid, hash_password(new))
+    return {"ok": True}
+
+
 @router.get("/me")
 async def get_me(request: Request):
     users = _users(request)
