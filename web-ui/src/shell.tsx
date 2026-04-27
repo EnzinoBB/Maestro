@@ -3,17 +3,20 @@ import { NavLink, useLocation } from "react-router-dom";
 import { Icons, StatusDot } from "./primitives";
 import { useHosts } from "./api/client";
 import { useRealtime } from "./hooks/useRealtime";
+import { useAuth } from "./hooks/useAuth";
 import { Ticker } from "./components/Ticker";
 import { UserMenuPopover } from "./components/UserMenuPopover";
 
 type NavItem = { to: string; label: string; icon: (p: { size?: number }) => ReactNode };
 
-const NAV: NavItem[] = [
+const BASE_NAV: NavItem[] = [
   { to: "/", label: "Overview", icon: Icons.dashboard },
   { to: "/deploys", label: "Deploys", icon: Icons.deploy },
   { to: "/nodes", label: "Nodes", icon: Icons.node },
   { to: "/wizard", label: "Wizard", icon: Icons.wizard },
 ];
+
+const ADMIN_NAV: NavItem = { to: "/admin", label: "Admin", icon: Icons.admin };
 
 function useTheme() {
   const [theme, setTheme] = useState<"dark" | "light">(() => {
@@ -35,6 +38,9 @@ export function Shell({ children }: { children: ReactNode }) {
   const { theme, setTheme } = useTheme();
   const loc = useLocation();
   const hosts = useHosts();
+  const { state: auth } = useAuth();
+  const isAdmin = auth.status === "single-user" || (auth.status === "authenticated" && auth.is_admin);
+  const nav = isAdmin ? [...BASE_NAV, ADMIN_NAV] : BASE_NAV;
   const onlineCount = hosts.data?.hosts.filter(h => h.online).length ?? 0;
   const totalHosts = hosts.data?.hosts.length ?? 0;
 
@@ -56,7 +62,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <span>Maestro</span>
         </div>
         <nav className="cp-sidebar__nav">
-          {NAV.map(item => (
+          {nav.map(item => (
             <NavLink
               key={item.to}
               to={item.to}
