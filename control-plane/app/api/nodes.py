@@ -1,6 +1,8 @@
 """REST router for nodes + organizations + admin user listing (M5.5)."""
 from __future__ import annotations
 
+import os
+
 from fastapi import APIRouter, HTTPException, Request
 
 from ..auth.middleware import SINGLEUSER_ID, is_single_user_mode
@@ -43,6 +45,48 @@ async def list_nodes(request: Request):
     for it in items:
         it["online"] = it["host_id"] in online_set
     return {"nodes": items}
+
+
+@router.get("/admin/daemon-enroll")
+async def admin_daemon_enroll(request: Request):
+    """Return the cp_url + token an operator needs to enroll a new daemon.
+
+    Admin only. The token is read from the MAESTRO_DAEMON_TOKEN env var
+    (set by docker-entrypoint.sh on first boot) with a fallback to the
+    /data/daemon-token file. cp_url comes from MAESTRO_PUBLIC_URL when
+    set (recommended for installs behind a reverse proxy) — otherwise
+    we reflect the request's scheme + Host header so the snippet works
+    out of the box for the operator who's currently looking at the UI.
+    """
+    uid, _ = _current_user(request)
+    is_admin = await _resolve_is_admin(request, uid)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="admin only")
+
+    token = os.environ.get("MAESTRO_DAEMON_TOKEN", "").strip()
+    if not token:
+        token_file = os.environ.get("MAESTRO_TOKEN_FILE", "/data/daemon-token")
+        try:
+            with open(token_file, "r", encoding="utf-8") as f:
+                token = f.read().strip()
+        except OSError:
+            token = ""
+
+    cp_url = os.environ.get("MAESTRO_PUBLIC_URL", "").rstrip("/")
+    if not cp_url:
+        host = request.headers.get("host", "")
+        scheme = request.url.scheme or "http"
+        if host:
+            cp_url = f"{scheme}://{host}"
+        else:
+            cp_url = "http://127.0.0.1:8000"
+
+    return {
+        "cp_url": cp_url,
+        "token": token,
+        "install_url": "https://github.com/EnzinoBB/Maestro/releases/latest/download/install-daemon.sh",
+        "token_available": bool(token),
+    }
 
 
 @router.get("/admin/users")
