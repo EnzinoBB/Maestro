@@ -27,6 +27,7 @@ from .api.deploys import router as deploys_router
 from .api.metrics import router as metrics_router
 from .api.wizard import router as wizard_router
 from .api.auth import router as auth_router
+from .api.api_keys import router as api_keys_router
 from .api.nodes import router as nodes_router
 from .api._errors import install_error_handlers
 from .auth.users_repo import UsersRepository
@@ -138,6 +139,7 @@ def create_app() -> FastAPI:
     app.include_router(metrics_router)
     app.include_router(wizard_router)
     app.include_router(auth_router)
+    app.include_router(api_keys_router)
     app.include_router(nodes_router)
     app.include_router(ui_router)
     app.include_router(install_router)
