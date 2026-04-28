@@ -107,8 +107,12 @@ require_root() {
 
 # ---- Download binary + verify checksum --------------------------------------
 download_binary() {
-  local tmpdir; tmpdir="$(mktemp -d)"
-  trap 'rm -rf "$tmpdir"' RETURN
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+  # Expand $tmpdir NOW (double quotes), not when the trap fires: the local
+  # may be out of scope by then, and `set -u` would explode with
+  # "tmpdir: unbound variable".
+  trap "rm -rf -- '$tmpdir'" RETURN
   local binary_name="maestrod-${OS}-${ARCH}"
   local base_url checksum_url
 
