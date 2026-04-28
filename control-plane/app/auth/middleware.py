@@ -24,6 +24,11 @@ log = logging.getLogger("maestro.auth.middleware")
 
 
 class CurrentUserMiddleware(BaseHTTPMiddleware):
+    # Hold strong references to fire-and-forget background tasks so the
+    # GC doesn't collect them before they run (CPython only weakly
+    # references active tasks).
+    _bg_tasks: set[asyncio.Task] = set()
+
     async def dispatch(self, request: Request, call_next) -> Response:
         request.state.user_id = await self._authenticate(request)
         return await call_next(request)
@@ -48,8 +53,13 @@ class CurrentUserMiddleware(BaseHTTPMiddleware):
         rows = await repo.list_active_by_prefix(prefix)
         for row in rows:
             if verify_password(key, row["key_hash"]):
-                # Best-effort last-used update, fire-and-forget.
-                asyncio.create_task(self._touch(repo, row["id"]))
+                # Best-effort last-used update, fire-and-forget. We hold a
+                # strong reference in _bg_tasks because CPython only weakly
+                # tracks live tasks; without this the GC may collect the
+                # task before it runs.
+                t = asyncio.create_task(self._touch(repo, row["id"]))
+                self._bg_tasks.add(t)
+                t.add_done_callback(self._bg_tasks.discard)
                 return row["user_id"]
         return None
 
