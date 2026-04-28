@@ -6,7 +6,7 @@ import secrets
 
 from fastapi import APIRouter, HTTPException, Request
 
-from ..auth.middleware import SINGLEUSER_ID, is_single_user_mode
+from ..auth.middleware import SINGLEUSER_ID
 from ..auth.passwords import hash_password
 from ..auth.users_repo import UserAlreadyExists, UserNotFound
 
@@ -116,7 +116,7 @@ async def admin_list_users(request: Request):
             }
             for r in rows
         ],
-        "single_user_mode": is_single_user_mode(),
+        "single_user_mode": False,
     }
 
 

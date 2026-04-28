@@ -30,6 +30,7 @@ from .api.auth import router as auth_router
 from .api.nodes import router as nodes_router
 from .api._errors import install_error_handlers
 from .auth.users_repo import UsersRepository
+from .auth.api_keys_repo import ApiKeysRepository
 from .auth.middleware import CurrentUserMiddleware, SINGLEUSER_ID
 from .storage_nodes import NodesRepository, OrganizationsRepository
 from starlette.middleware.sessions import SessionMiddleware
@@ -62,6 +63,7 @@ async def lifespan(app: FastAPI):
     app.state.deploy_repo = DeployRepository(db_path)
     app.state.metrics_repo = metrics_repo
     app.state.users_repo = UsersRepository(db_path)
+    app.state.api_keys_repo = ApiKeysRepository(db_path)
     app.state.nodes_repo = NodesRepository(db_path)
     app.state.orgs_repo = OrganizationsRepository(db_path)
     app.state.hub = hub

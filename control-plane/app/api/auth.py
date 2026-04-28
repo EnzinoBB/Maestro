@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from ..auth.passwords import hash_password, verify_password
 from ..auth.users_repo import UsersRepository, UserAlreadyExists, UserNotFound
-from ..auth.middleware import SINGLEUSER_ID, is_single_user_mode
+from ..auth.middleware import SINGLEUSER_ID
 
 
 router = APIRouter(prefix="/api/auth")
@@ -118,7 +118,7 @@ async def post_change_password(request: Request):
 @router.get("/me")
 async def get_me(request: Request):
     users = _users(request)
-    smode = is_single_user_mode()
+    smode = False
     # First-run flag: in multi-user mode with no real admin yet, the login
     # page should switch to a "create your admin" form instead of asking
     # for credentials that don't exist.
