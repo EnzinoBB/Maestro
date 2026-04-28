@@ -5,6 +5,7 @@ import secrets
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import Response
 
 from ..auth.api_keys_repo import ApiKeysRepository
 from ..auth.deps import require_user
@@ -94,3 +95,18 @@ async def get_list(request: Request, uid: str = Depends(require_user)):
             for r in rows
         ]
     }
+
+
+@router.delete("/{key_id}", status_code=204)
+async def delete_revoke(key_id: str, request: Request,
+                        uid: str = Depends(require_user)):
+    repo = _repo(request)
+    # If the key belongs to a different user, do NOT reveal that — return 404.
+    try:
+        existing = await repo.get(key_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="not found")
+    if existing["user_id"] != uid:
+        raise HTTPException(status_code=404, detail="not found")
+    await repo.revoke(key_id, user_id=uid)
+    return Response(status_code=204)

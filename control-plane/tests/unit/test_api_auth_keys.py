@@ -94,3 +94,58 @@ def test_get_keys_requires_auth(client):
     client.cookies.clear()
     r = client.get("/api/auth/keys")
     assert r.status_code == 401
+
+
+def test_delete_revokes_key(client):
+    r = client.post("/api/auth/keys", json={"label": "x"})
+    kid = r.json()["id"]
+    full_key = r.json()["key"]
+
+    r = client.delete(f"/api/auth/keys/{kid}")
+    assert r.status_code == 204
+
+    # The revoked key no longer authenticates
+    client.cookies.clear()
+    r = client.get("/api/deploys",
+                   headers={"Authorization": f"Bearer {full_key}"})
+    assert r.status_code == 401
+
+
+def test_delete_is_idempotent(client):
+    r = client.post("/api/auth/keys", json={"label": "x"})
+    kid = r.json()["id"]
+    assert client.delete(f"/api/auth/keys/{kid}").status_code == 204
+    assert client.delete(f"/api/auth/keys/{kid}").status_code == 204
+
+
+def test_delete_other_users_key_returns_404(client, monkeypatch):
+    # Create a second user and a key owned by them.
+    import asyncio
+    from app.auth.api_keys_repo import ApiKeysRepository
+    from app.auth.passwords import hash_password
+    repo = ApiKeysRepository(os.environ["MAESTRO_DB"])
+    import aiosqlite
+    import time as _t
+
+    async def _seed():
+        async with aiosqlite.connect(os.environ["MAESTRO_DB"]) as db:
+            await db.execute(
+                "INSERT INTO users (id, username, is_admin, created_at) "
+                "VALUES (?,?,?,?)",
+                ("usr_bob", "bob", 0, _t.time()),
+            )
+            await db.commit()
+        return await repo.create(user_id="usr_bob", label="bobs",
+                                 prefix="mae_bob01", key_hash=hash_password("mae_bob01xxxx"))
+
+    bobs_key = asyncio.run(_seed())
+
+    # alice (the test client) tries to revoke bob's key
+    r = client.delete(f"/api/auth/keys/{bobs_key['id']}")
+    assert r.status_code == 404
+
+
+def test_delete_requires_auth(client):
+    client.cookies.clear()
+    r = client.delete("/api/auth/keys/ak_nonexistent")
+    assert r.status_code == 401
