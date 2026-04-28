@@ -36,6 +36,20 @@ async def _read_json(request: Request) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+async def _audit(request: Request, kind: str, scope_id: str, payload: dict) -> None:
+    """Append an audit row to metric_events. Storage.path is the DB path
+    (verified at app/storage.py:131)."""
+    import aiosqlite, time as _t, json as _json
+    db_path = request.app.state.storage.path
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            "INSERT INTO metric_events (ts, kind, scope, scope_id, payload_json) "
+            "VALUES (?,?,?,?,?)",
+            (_t.time(), kind, "user", scope_id, _json.dumps(payload)),
+        )
+        await db.commit()
+
+
 @router.post("", status_code=201)
 async def post_create(request: Request, uid: str = Depends(require_user)):
     body = await _read_json(request)
@@ -68,6 +82,9 @@ async def post_create(request: Request, uid: str = Depends(require_user)):
     except ValueError:
         raise HTTPException(status_code=409,
                             detail=f"label '{label}' is already in use")
+
+    await _audit(request, "api_key.created", uid,
+                 {"key_id": row["id"], "label": row["label"]})
 
     return {
         "id": row["id"],
@@ -109,4 +126,6 @@ async def delete_revoke(key_id: str, request: Request,
     if existing["user_id"] != uid:
         raise HTTPException(status_code=404, detail="not found")
     await repo.revoke(key_id, user_id=uid)
+    await _audit(request, "api_key.revoked", uid,
+                 {"key_id": key_id, "label": existing["label"]})
     return Response(status_code=204)

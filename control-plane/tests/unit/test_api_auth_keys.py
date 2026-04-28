@@ -149,3 +149,29 @@ def test_delete_requires_auth(client):
     client.cookies.clear()
     r = client.delete("/api/auth/keys/ak_nonexistent")
     assert r.status_code == 401
+
+
+def test_audit_event_emitted_on_create_and_revoke(client):
+    import asyncio
+    import aiosqlite
+    import json as _json
+
+    r = client.post("/api/auth/keys", json={"label": "audited"})
+    kid = r.json()["id"]
+    client.delete(f"/api/auth/keys/{kid}")
+
+    async def _events():
+        async with aiosqlite.connect(os.environ["MAESTRO_DB"]) as db:
+            async with db.execute(
+                "SELECT kind, payload_json FROM metric_events "
+                "WHERE kind IN ('api_key.created', 'api_key.revoked') "
+                "ORDER BY ts ASC"
+            ) as cur:
+                return await cur.fetchall()
+
+    rows = asyncio.run(_events())
+    kinds = [r[0] for r in rows]
+    assert kinds == ["api_key.created", "api_key.revoked"]
+    payload = _json.loads(rows[0][1])
+    assert payload["key_id"] == kid
+    assert payload["label"] == "audited"
