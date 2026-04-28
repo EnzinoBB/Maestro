@@ -10,7 +10,7 @@ execute the deploys, and stream metrics and logs back. An LLM agent
 (Claude Code, Cursor, Copilot, …) talks to the CP via MCP; a bundled
 [`SKILL.md`](skill/SKILL.md) teaches it the conventions.
 
-## Project status — v0.3.1
+## Project status — v0.3.2
 
 | Layer | Status |
 |---|---|
@@ -20,6 +20,7 @@ execute the deploys, and stream metrics and logs back. An LLM agent
 | Daemon enrollment via in-browser wizard | shipping (v0.3.0) |
 | User management UI (add user, change pw, reset pw) | shipping (v0.3.0) |
 | Sidebar nav link to `/admin` for admins | shipping (v0.3.1) |
+| Clipboard copy on plain-HTTP CP dashboards | fixed (v0.3.2) |
 | Postgres backend, Kubernetes runner, mTLS | planned (Phase 3) |
 
 The Phase 1 acceptance criteria are documented in

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Mono, Badge, Pill, Icons, relTime } from "../primitives";
 import { PasswordStrength } from "../components/PasswordStrength";
+import { copyText } from "../lib/clipboard";
 
 type AdminUser = {
   id: string;
@@ -350,6 +351,7 @@ function ResetPasswordModal({ user, onClose }: {
   const [pw, setPw] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copyErr, setCopyErr] = useState(false);
   const [generating, setGenerating] = useState(false);
 
   const generate = async () => {
@@ -372,11 +374,15 @@ function ResetPasswordModal({ user, onClose }: {
 
   const copy = async () => {
     if (!pw) return;
-    try {
-      await navigator.clipboard.writeText(pw);
+    const ok = await copyText(pw);
+    if (ok) {
       setCopied(true);
+      setCopyErr(false);
       setTimeout(() => setCopied(false), 1500);
-    } catch { /* clipboard blocked */ }
+    } else {
+      setCopyErr(true);
+      setTimeout(() => setCopyErr(false), 4000);
+    }
   };
 
   return (
@@ -426,9 +432,14 @@ function ResetPasswordModal({ user, onClose }: {
                 <Mono style={{ flex: 1, fontSize: 13 }}>{pw}</Mono>
                 <button type="button" className="cp-btn cp-btn--sm" onClick={copy}>
                   <Icons.check size={12} />
-                  <span>{copied ? "copied" : "copy"}</span>
+                  <span>{copied ? "copied" : copyErr ? "failed" : "copy"}</span>
                 </button>
               </div>
+              {copyErr && (
+                <div className="small" style={{ color: "var(--err)", marginTop: 8 }}>
+                  Could not access the clipboard — select the password above and copy it manually.
+                </div>
+              )}
               <div className="hstack" style={{ justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
                 <button type="button" className="cp-btn cp-btn--primary" onClick={onClose}>Done</button>
               </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Icons, Mono, Badge, StatusDot } from "../primitives";
 import { Stepper } from "./Stepper";
+import { copyText } from "../lib/clipboard";
 
 type EnrollPayload = {
   cp_url: string;
@@ -197,6 +198,7 @@ function Step1Install({ hostId, type: _type, labels: _labels }: { hostId: string
     refetchOnMount: "always",
   });
   const [copied, setCopied] = useState(false);
+  const [copyErr, setCopyErr] = useState(false);
 
   if (isLoading) return <div style={{ padding: 18 }}><div className="cp-skel" style={{ height: 200 }} /></div>;
   if (error) {
@@ -214,11 +216,15 @@ function Step1Install({ hostId, type: _type, labels: _labels }: { hostId: string
   const cmd = buildCommand(data, hostId);
 
   const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(cmd);
+    const ok = await copyText(cmd);
+    if (ok) {
       setCopied(true);
+      setCopyErr(false);
       setTimeout(() => setCopied(false), 1500);
-    } catch { /* clipboard blocked */ }
+    } else {
+      setCopyErr(true);
+      setTimeout(() => setCopyErr(false), 4000);
+    }
   };
 
   return (
@@ -255,9 +261,15 @@ function Step1Install({ hostId, type: _type, labels: _labels }: { hostId: string
           style={{ position: "absolute", top: 6, right: 6 }}
           onClick={onCopy} disabled={!data.token_available}>
           <Icons.check size={12} />
-          <span>{copied ? "copied" : "copy"}</span>
+          <span>{copied ? "copied" : copyErr ? "failed" : "copy"}</span>
         </button>
       </div>
+
+      {copyErr && (
+        <div className="small" style={{ color: "var(--err)", marginTop: -8 }}>
+          Could not access the clipboard — select the command above and copy it manually.
+        </div>
+      )}
 
       <div className="hstack" style={{
         gap: 8, padding: 10,
