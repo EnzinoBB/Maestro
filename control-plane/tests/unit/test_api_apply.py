@@ -88,7 +88,10 @@ def test_apply_rejects_non_string_files_store_value():
     with TestClient(app) as client:
         r = client.post("/api/config/apply?dry_run=true", json=body)
     assert r.status_code == 400, r.text
-    detail = r.json().get("detail", "")
-    assert "files_store" in detail
-    assert "site" in detail
-    assert "int" in detail
+    resp = r.json()
+    assert resp["ok"] is False
+    assert resp["error"]["code"] == "bad_request"
+    message = resp["error"]["message"]
+    assert "files_store" in message
+    assert "site" in message
+    assert "int" in message

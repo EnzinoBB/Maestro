@@ -197,6 +197,7 @@ deployment:
     r = client.post(f"/api/deploys/{d2}/apply", json={"yaml_text": yaml2})
     assert r.status_code == 409, r.text
     body = r.json()
-    assert "conflicts" in body["detail"]
-    assert body["detail"]["conflicts"][0]["kind"] == "host_port_collision"
-    assert body["detail"]["conflicts"][0]["host_port"] == 80
+    assert body["ok"] is False
+    assert "conflicts" in body["error"]
+    assert body["error"]["conflicts"][0]["kind"] == "host_port_collision"
+    assert body["error"]["conflicts"][0]["host_port"] == 80

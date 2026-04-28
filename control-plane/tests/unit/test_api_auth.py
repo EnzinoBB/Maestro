@@ -164,3 +164,13 @@ def test_setup_admin_auto_logs_in(client_multiuser):
     # /api/deploys is now reachable on the SAME client (cookie persists)
     r = client_multiuser.get("/api/deploys")
     assert r.status_code == 200
+
+
+def test_401_returns_structured_error_body(client_multiuser):
+    r = client_multiuser.get("/api/deploys")
+    assert r.status_code == 401
+    body = r.json()
+    assert body == {
+        "ok": False,
+        "error": {"code": "unauthenticated", "message": "authentication required"},
+    }
