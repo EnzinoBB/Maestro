@@ -198,6 +198,8 @@ deployment:
     assert r.status_code == 409, r.text
     body = r.json()
     assert body["ok"] is False
+    assert body["error"]["code"] == "conflict"
+    assert "message" in body["error"]
     assert "conflicts" in body["error"]
     assert body["error"]["conflicts"][0]["kind"] == "host_port_collision"
     assert body["error"]["conflicts"][0]["host_port"] == 80

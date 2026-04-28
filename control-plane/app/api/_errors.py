@@ -29,12 +29,11 @@ def install_error_handlers(app: FastAPI) -> None:
         if isinstance(exc.detail, str):
             body["message"] = exc.detail
         elif isinstance(exc.detail, dict):
-            body["message"] = "request failed"
-            # Merge structured details (e.g. {"conflicts": [...]}) alongside
-            # the code/message contract so consumers always have both.
-            for k, v in exc.detail.items():
-                if k not in body:
-                    body[k] = v
+            # Endpoint-supplied dict wins; handler defaults fill in only the keys
+            # the endpoint did not provide. Lets endpoints emit a custom 'code'
+            # (e.g. for sub-cases that share a status) without it being silently
+            # dropped.
+            body = {"code": code, "message": "request failed", **exc.detail}
         else:
             body["message"] = "request failed"
         return JSONResponse(
