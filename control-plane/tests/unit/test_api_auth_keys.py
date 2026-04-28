@@ -62,3 +62,35 @@ def test_post_keys_requires_auth(client):
     client.cookies.clear()
     r = client.post("/api/auth/keys", json={"label": "laptop"})
     assert r.status_code == 401
+
+
+def test_get_keys_returns_own_keys_only(client):
+    client.post("/api/auth/keys", json={"label": "a"})
+    client.post("/api/auth/keys", json={"label": "b"})
+
+    r = client.get("/api/auth/keys")
+    assert r.status_code == 200
+    body = r.json()
+    labels = sorted(k["label"] for k in body["keys"])
+    assert labels == ["a", "b"]
+    # Cleartext key MUST NOT appear in list
+    for k in body["keys"]:
+        assert "key" not in k
+        assert "key_hash" not in k
+
+
+def test_get_keys_includes_revoked(client):
+    r = client.post("/api/auth/keys", json={"label": "a"})
+    kid = r.json()["id"]
+    client.delete(f"/api/auth/keys/{kid}")
+
+    r = client.get("/api/auth/keys")
+    keys = r.json()["keys"]
+    assert len(keys) == 1
+    assert keys[0]["revoked_at"] is not None
+
+
+def test_get_keys_requires_auth(client):
+    client.cookies.clear()
+    r = client.get("/api/auth/keys")
+    assert r.status_code == 401

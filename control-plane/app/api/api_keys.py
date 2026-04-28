@@ -76,3 +76,21 @@ async def post_create(request: Request, uid: str = Depends(require_user)):
         "key": full_key,
         "warning": "Save this key now. You will not be able to see it again.",
     }
+
+
+@router.get("")
+async def get_list(request: Request, uid: str = Depends(require_user)):
+    rows = await _repo(request).list_by_user(uid)
+    return {
+        "keys": [
+            {
+                "id": r["id"],
+                "label": r["label"],
+                "prefix": r["prefix"],
+                "created_at": r["created_at"],
+                "last_used_at": r["last_used_at"],
+                "revoked_at": r["revoked_at"],
+            }
+            for r in rows
+        ]
+    }
