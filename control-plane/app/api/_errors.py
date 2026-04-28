@@ -1,6 +1,8 @@
 """Custom error response shape for HTTPException raised inside /api/*."""
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
@@ -23,17 +25,19 @@ def install_error_handlers(app: FastAPI) -> None:
                 status_code=exc.status_code, content={"detail": exc.detail},
             )
         code = _CODE_BY_STATUS.get(exc.status_code, "error")
-        # If detail is a dict (e.g., for 409 conflicts), preserve it as-is
-        if isinstance(exc.detail, dict):
-            return JSONResponse(
-                status_code=exc.status_code,
-                content={"ok": False, "error": exc.detail},
-            )
-        message = (
-            exc.detail if isinstance(exc.detail, str)
-            else "request failed"
-        )
+        body: dict[str, Any] = {"code": code}
+        if isinstance(exc.detail, str):
+            body["message"] = exc.detail
+        elif isinstance(exc.detail, dict):
+            body["message"] = "request failed"
+            # Merge structured details (e.g. {"conflicts": [...]}) alongside
+            # the code/message contract so consumers always have both.
+            for k, v in exc.detail.items():
+                if k not in body:
+                    body[k] = v
+        else:
+            body["message"] = "request failed"
         return JSONResponse(
             status_code=exc.status_code,
-            content={"ok": False, "error": {"code": code, "message": message}},
+            content={"ok": False, "error": body},
         )
