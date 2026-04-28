@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from typing import Any
-from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from ..auth.deps import require_user
 from ..config.loader import parse_deployment, LoaderError
 from ..config.validator import validate as semantic_validate
 from ..config.hashing import components_hash_from_rendered
@@ -12,7 +13,7 @@ from ..orchestrator import Engine
 from ..storage_deploys import DeployRepository
 
 
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
 
 
 def _errors_payload(code: str, message: str, errors: list[dict] | None = None) -> dict:
