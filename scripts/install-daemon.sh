@@ -111,8 +111,8 @@ download_binary() {
   tmpdir="$(mktemp -d)"
   # Expand $tmpdir NOW (double quotes), not when the trap fires: the local
   # may be out of scope by then, and `set -u` would explode with
-  # "tmpdir: unbound variable". The early expansion is intentional, so the
-  # shellcheck SC2064 warning here is suppressed.
+  # "tmpdir: unbound variable". The early expansion is intentional (SC2064
+  # is suppressed via the directive below).
   # shellcheck disable=SC2064
   trap "rm -rf -- '$tmpdir'" RETURN
   local binary_name="maestrod-${OS}-${ARCH}"
