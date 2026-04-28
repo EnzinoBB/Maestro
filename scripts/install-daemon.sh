@@ -41,6 +41,15 @@ MODE="install"
 PURGE=""
 AUTO_UPDATE=""
 
+# Track whether each identity-related flag was explicitly provided. Used by
+# --upgrade to decide whether to rewrite the config. Without this we cannot
+# distinguish "operator did not pass --token" (keep the existing one) from
+# "operator passed --token ''" (which we treat the same — non-empty wins).
+TOKEN_GIVEN=""
+HOST_ID_GIVEN=""
+CP_URL_GIVEN=""
+INSECURE_GIVEN=""
+
 UPDATE_TIMER_UNIT="maestro-daemon-update.timer"
 UPDATE_SERVICE_UNIT="maestro-daemon-update.service"
 
@@ -51,12 +60,12 @@ usage() {
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --cp-url)      CP_URL="$2"; shift 2;;
-    --host-id)     HOST_ID="$2"; shift 2;;
-    --token)       TOKEN="$2"; shift 2;;
+    --cp-url)      CP_URL="$2"; CP_URL_GIVEN="1"; shift 2;;
+    --host-id)     HOST_ID="$2"; HOST_ID_GIVEN="1"; shift 2;;
+    --token)       TOKEN="$2"; TOKEN_GIVEN="1"; shift 2;;
     --version)     VERSION="$2"; shift 2;;
     --from-github) FROM_GITHUB="1"; shift;;
-    --insecure)    INSECURE="1"; shift;;
+    --insecure)    INSECURE="1"; INSECURE_GIVEN="1"; shift;;
     --upgrade)         MODE="upgrade"; shift;;
     --auto-update)     AUTO_UPDATE="on"; shift;;
     --auto-update=on)  AUTO_UPDATE="on"; shift;;
@@ -269,7 +278,11 @@ do_install() {
   require_root
   if [[ -f "$CFG_FILE" ]]; then
     echo "Existing installation detected at $CFG_FILE." >&2
-    echo "Use --upgrade to change version, or --uninstall first." >&2
+    echo "  - To rotate the token / change host-id / change cp-url:" >&2
+    echo "      sudo $0 --upgrade --token <NEW> --host-id <NEW> --cp-url <NEW>" >&2
+    echo "    (any flag you don't pass keeps its current value)" >&2
+    echo "  - To start over:" >&2
+    echo "      sudo $0 --uninstall --purge" >&2
     exit 6
   fi
   [[ -z "$HOST_ID" ]] && HOST_ID="$(hostname -s)"
@@ -310,6 +323,27 @@ do_upgrade() {
   # overwrites the binary atomically via unlink+rename, and Linux keeps
   # the running inode around until the process exits.
   download_binary
+  # If the operator passed any identity flag, rewrite the config so the
+  # restarted daemon picks up the new value. Fields they didn't pass keep
+  # their existing value (read back from the current config). This makes
+  # `--upgrade --token <NEW>` the supported way to rotate a token after
+  # CP regeneration, which previously required --uninstall + --install.
+  if [[ -n "${TOKEN_GIVEN}${HOST_ID_GIVEN}${CP_URL_GIVEN}${INSECURE_GIVEN}" ]]; then
+    if [[ -z "$HOST_ID_GIVEN" ]]; then
+      HOST_ID="$(awk -F': *' '/^host_id:/ {print $2; exit}' "$CFG_FILE")"
+    fi
+    if [[ -z "$TOKEN_GIVEN" ]]; then
+      # Tokens may legitimately contain shell-special chars; awk on the
+      # first space-delimited field after the colon is correct for the
+      # narrow set of values we write here (hex / base64url).
+      TOKEN="$(awk -F': *' '/^token:/ {print $2; exit}' "$CFG_FILE")"
+    fi
+    if [[ -z "$INSECURE_GIVEN" ]]; then
+      _existing_insecure="$(awk -F': *' '/^insecure:/ {print $2; exit}' "$CFG_FILE")"
+      [[ "$_existing_insecure" == "true" ]] && INSECURE="1"
+    fi
+    write_config
+  fi
   if [[ "$SERVICE_KIND" == "systemd" ]]; then
     systemctl restart maestro-daemon.service
   else
