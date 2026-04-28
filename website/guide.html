@@ -1,0 +1,838 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="dark light" />
+<title>Maestro — Deployment guide</title>
+<meta name="description" content="A complete walkthrough of Maestro deployments: the YAML schema and the equivalent Control Plane (Wizard / Deploys UI / API) actions, side by side." />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500;700&display=swap" />
+
+<link rel="stylesheet" href="site.css" />
+
+<style>
+  /* ── Guide-only layout: side-by-side YAML | UI ─────────────── */
+  .guide-toc {
+    position: sticky; top: 70px;
+    align-self: start;
+    border-left: 1px solid var(--border);
+    padding: 6px 0 6px 16px;
+    font-size: 13px;
+    line-height: 1.9;
+    color: var(--fg-muted);
+  }
+  .guide-toc a { display: block; color: inherit; }
+  .guide-toc a:hover { color: var(--accent); }
+  .guide-toc-h {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--fg-dim);
+    margin-bottom: 8px;
+  }
+
+  .guide-layout {
+    display: grid;
+    grid-template-columns: 1fr 220px;
+    gap: 48px;
+  }
+  @media (max-width: 980px) {
+    .guide-layout { grid-template-columns: 1fr; }
+    .guide-toc { display: none; }
+  }
+
+  .guide-section { margin-bottom: var(--s-8); }
+  .guide-section h3 {
+    font-size: 22px;
+    margin: 0 0 var(--s-3);
+    letter-spacing: -0.01em;
+  }
+  .guide-section p { margin: 0 0 var(--s-3); color: var(--fg); }
+  .guide-section p.dim { color: var(--fg-muted); }
+  .guide-section .recipe-meta {
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--fg-dim); text-transform: uppercase; letter-spacing: 0.08em;
+    margin-bottom: 6px;
+  }
+
+  .split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: var(--s-4) 0 var(--s-5);
+  }
+  @media (max-width: 820px) {
+    .split { grid-template-columns: 1fr; }
+  }
+  .split > .pane {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-sunken);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .pane-h {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--fg-muted);
+    background: var(--bg-raised);
+  }
+  .pane-h .badge {
+    font-size: 10px; padding: 1px 6px; border-radius: 3px;
+    background: var(--accent-dim); color: var(--accent);
+    font-family: var(--font-mono); letter-spacing: 0.04em;
+  }
+  .pane-h .badge.alt { background: rgba(255,255,255,0.06); color: var(--fg-muted); }
+  .pane-body { padding: 14px 14px 16px; flex: 1; }
+  .pane-body pre {
+    margin: 0;
+    font-family: var(--font-mono); font-size: 12.5px;
+    line-height: 1.55;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--fg);
+  }
+  .pane-body ol.steps-mini {
+    margin: 0; padding: 0; list-style: none;
+    counter-reset: step;
+  }
+  .pane-body ol.steps-mini > li {
+    counter-increment: step;
+    position: relative;
+    padding: 0 0 12px 28px;
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+  .pane-body ol.steps-mini > li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0; top: 1px;
+    width: 20px; height: 20px;
+    border-radius: 4px;
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .pane-body ol.steps-mini > li:last-child { padding-bottom: 0; }
+  .pane-body ol.steps-mini code {
+    background: var(--bg-raised);
+    padding: 1px 5px; border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+  .pane-body ol.steps-mini .nav {
+    display: inline-block;
+    background: var(--bg-raised);
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    padding: 0px 6px;
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--fg);
+  }
+
+  /* note callout */
+  .callout {
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--accent);
+    background: var(--bg-raised);
+    padding: 12px 14px;
+    border-radius: 4px;
+    font-size: 14px;
+    color: var(--fg-muted);
+    margin: var(--s-4) 0;
+  }
+  .callout strong { color: var(--fg); }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout code {
+    background: var(--bg-sunken);
+    padding: 1px 5px; border-radius: 3px;
+    border: 1px solid var(--border);
+  }
+
+  /* api table */
+  .api-table {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    margin: var(--s-4) 0;
+  }
+  .api-row {
+    display: grid;
+    grid-template-columns: 100px 1fr 2fr;
+    gap: 12px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .api-row:first-child { border-top: 0; background: var(--bg-raised); font-weight: 600; }
+  .api-row .verb {
+    font-family: var(--font-mono); font-weight: 600;
+    color: var(--accent);
+  }
+  .api-row .path {
+    font-family: var(--font-mono);
+    color: var(--fg);
+    word-break: break-all;
+  }
+
+  /* lifecycle illustration */
+  .lifecycle {
+    display: flex; align-items: stretch; gap: 0;
+    margin: var(--s-5) 0 var(--s-3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--bg-raised);
+  }
+  .lifecycle .lf-step {
+    flex: 1;
+    padding: 14px 14px;
+    border-right: 1px solid var(--border);
+    position: relative;
+  }
+  .lifecycle .lf-step:last-child { border-right: 0; }
+  .lifecycle .lf-step .verb {
+    font-family: var(--font-mono); font-size: 11px;
+    color: var(--accent); letter-spacing: 0.04em; text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+  .lifecycle .lf-step .what { font-size: 13px; color: var(--fg); margin-bottom: 6px; line-height: 1.5; }
+  .lifecycle .lf-step .who { font-size: 12px; color: var(--fg-muted); line-height: 1.5; }
+  @media (max-width: 720px) {
+    .lifecycle { flex-direction: column; }
+    .lifecycle .lf-step { border-right: 0; border-bottom: 1px solid var(--border); }
+    .lifecycle .lf-step:last-child { border-bottom: 0; }
+  }
+
+  .guide-hero {
+    padding: 64px 0 36px;
+    border-bottom: 1px solid var(--border);
+  }
+  .guide-hero .crumb {
+    font-family: var(--font-mono); font-size: 12px;
+    color: var(--fg-muted);
+    margin-bottom: 12px;
+  }
+  .guide-hero .crumb a { color: var(--accent); }
+  .guide-hero h1 {
+    font-size: 44px; line-height: 1.05; letter-spacing: -0.02em;
+    margin: 0 0 14px;
+  }
+  .guide-hero p.lede {
+    font-size: 17px; color: var(--fg-muted);
+    max-width: 680px;
+    margin: 0;
+  }
+  .guide-body { padding: 48px 0 96px; }
+
+  /* simple syntax tint inside <pre> in this page */
+  .yk { color: #6CC8D9; }
+  .ys { color: #C2C7CD; }
+  .yc { color: var(--fg-dim); font-style: italic; }
+  .yn { color: #D6B15C; }
+</style>
+</head>
+<body>
+
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- ───────────── NAV ───────────── -->
+<header class="nav" role="banner">
+  <div class="container nav-inner">
+    <a href="index.html" class="wordmark" aria-label="Maestro home">
+      maestro<span class="accent">.</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="index.html#quickstart">Quickstart</a>
+      <a href="index.html#how">How it works</a>
+      <a href="guide.html" aria-current="page" style="color:var(--accent)">Deployment guide</a>
+      <a href="index.html#agents">Agents</a>
+      <a href="https://github.com/EnzinoBB/Maestro" rel="noopener">GitHub ↗</a>
+    </nav>
+    <button class="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme">
+      <span class="theme-icon" aria-hidden="true">☾</span>
+    </button>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- ───────────── HERO ───────────── -->
+<section class="guide-hero">
+  <div class="container">
+    <div class="crumb"><a href="index.html">← back to home</a> · /guide</div>
+    <h1>Defining a deployment.</h1>
+    <p class="lede">
+      Two views of the same thing: the <code>deployment.yaml</code> on the
+      left, the equivalent click path through the Control Plane on the
+      right. Read whichever one matches how you work — every example below
+      produces the exact same state on disk.
+    </p>
+  </div>
+</section>
+
+<!-- ───────────── BODY ───────────── -->
+<section class="guide-body">
+  <div class="container">
+    <div class="guide-layout">
+
+      <article>
+
+        <!-- ───────── SECTION 0: concepts ───────── -->
+        <section class="guide-section" id="concepts">
+          <div class="section-label">// concepts</div>
+          <h3>What a deploy actually is</h3>
+          <p>
+            A <strong>deploy</strong> in Maestro is a named, versioned bundle
+            of YAML. Every time you submit a new YAML the CP creates a new
+            <code>deploy_version</code> (immutable, numbered <code>v1</code>,
+            <code>v2</code>, …). Apply happens on a single version: the CP
+            sends the spec to each daemon listed under
+            <code>deployment</code>, the daemon reconciles its host, and the
+            CP records the result. Rollback flips the active version pointer
+            back to a previous one and re-applies it.
+          </p>
+
+          <p>
+            Three ways to produce a YAML, three places where the same field
+            shows up:
+          </p>
+
+          <div class="lifecycle" aria-label="Three entry points">
+            <div class="lf-step">
+              <div class="verb">wizard</div>
+              <div class="what">Click through Source → Placement → Runtime → Review.</div>
+              <div class="who">Best for getting started.</div>
+            </div>
+            <div class="lf-step">
+              <div class="verb">yaml</div>
+              <div class="what">Write the file, paste it, hit <code>Apply</code>.</div>
+              <div class="who">Best for git-tracked change history.</div>
+            </div>
+            <div class="lf-step">
+              <div class="verb">api</div>
+              <div class="what"><code>POST /api/deploys</code> + apply.</div>
+              <div class="who">Best for agents and CI.</div>
+            </div>
+          </div>
+
+          <div class="callout">
+            <strong>Read the schema in full</strong> before going beyond the
+            recipes here:
+            <a class="link-accent" href="https://github.com/EnzinoBB/Maestro/blob/main/docs/yaml-schema.md" rel="noopener">docs/yaml-schema.md</a>.
+            The Wizard covers the most common subset; the YAML editor is the
+            surface for everything.
+          </div>
+        </section>
+
+        <!-- ───────── RECIPE 1 ───────── -->
+        <section class="guide-section" id="recipe-1">
+          <div class="section-label">// recipe 01</div>
+          <div class="recipe-meta">single host · single docker container</div>
+          <h3>Hello, Nginx</h3>
+          <p>
+            The smallest meaningful deploy: one host, one prebuilt Docker
+            image, one published port. This is exactly what the Wizard
+            produces if you accept all defaults.
+          </p>
+
+          <div class="split">
+            <div class="pane">
+              <div class="pane-h"><span class="badge">yaml</span> <span>deployment.yaml</span></div>
+              <div class="pane-body">
+<pre><span class="yk">api_version:</span> <span class="ys">maestro/v1</span>
+<span class="yk">project:</span> <span class="ys">hello-web</span>
+
+<span class="yk">hosts:</span>
+  <span class="yk">web-01:</span>
+    <span class="yk">type:</span> linux
+    <span class="yk">address:</span> <span class="ys">10.0.0.10</span>
+
+<span class="yk">components:</span>
+  <span class="yk">web:</span>
+    <span class="yk">source:</span>
+      <span class="yk">type:</span> docker
+      <span class="yk">image:</span> nginx
+      <span class="yk">tag:</span> <span class="ys">"1.27-alpine"</span>
+    <span class="yk">run:</span>
+      <span class="yk">type:</span> docker
+      <span class="yk">container_name:</span> hello-web
+      <span class="yk">ports:</span> [<span class="ys">"80:80"</span>]
+      <span class="yk">restart:</span> unless-stopped
+    <span class="yk">healthcheck:</span>
+      <span class="yk">type:</span> http
+      <span class="yk">url:</span> <span class="ys">http://localhost/</span>
+      <span class="yk">expect_status:</span> <span class="yn">200</span>
+
+<span class="yk">deployment:</span>
+  - <span class="yk">host:</span> web-01
+    <span class="yk">components:</span> [web]</pre>
+              </div>
+            </div>
+
+            <div class="pane">
+              <div class="pane-h"><span class="badge alt">control plane</span> <span>Wizard → new deploy</span></div>
+              <div class="pane-body">
+<ol class="steps-mini">
+  <li>Sidebar → <span class="nav">Wizard</span>. Entry point stays on <code>new</code>.</li>
+  <li><strong>Intent</strong> — name the deploy <code>hello-web</code>, name the component <code>web</code>.</li>
+  <li><strong>Source</strong> — pick <code>Pre-built Docker image</code>.</li>
+  <li><strong>Source details</strong> — image <code>nginx</code>, tag <code>1.27-alpine</code>.</li>
+  <li><strong>Placement</strong> — tick <code>web-01</code>. (Don't see it? <span class="nav">Nodes → Enroll new daemon</span> first.)</li>
+  <li><strong>Runtime</strong> — port <code>80:80</code>, restart <code>unless-stopped</code>, healthcheck HTTP <code>/</code> → 200.</li>
+  <li><strong>Review</strong> — the right pane shows the YAML you'd write by hand. <span class="nav">Create deploy</span>.</li>
+</ol>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ───────── RECIPE 2 ───────── -->
+        <section class="guide-section" id="recipe-2">
+          <div class="section-label">// recipe 02</div>
+          <div class="recipe-meta">single host · two components · explicit dependency</div>
+          <h3>API + Postgres (depends_on)</h3>
+          <p>
+            A real stack is at least two services that need to come up in the
+            right order. Use <code>depends_on</code> on the dependent
+            component — the CP builds the graph and rolls out in topological
+            order, waiting for each healthcheck.
+          </p>
+
+          <div class="split">
+            <div class="pane">
+              <div class="pane-h"><span class="badge">yaml</span> <span>deployment.yaml</span></div>
+              <div class="pane-body">
+<pre><span class="yk">api_version:</span> <span class="ys">maestro/v1</span>
+<span class="yk">project:</span> <span class="ys">demo-stack</span>
+
+<span class="yk">hosts:</span>
+  <span class="yk">app-01:</span> { <span class="yk">type:</span> linux, <span class="yk">address:</span> <span class="ys">10.0.0.20</span> }
+
+<span class="yk">components:</span>
+  <span class="yk">db:</span>
+    <span class="yk">source:</span>
+      <span class="yk">type:</span> docker
+      <span class="yk">image:</span> postgres
+      <span class="yk">tag:</span> <span class="ys">"16"</span>
+    <span class="yk">run:</span>
+      <span class="yk">type:</span> docker
+      <span class="yk">container_name:</span> demo-db
+      <span class="yk">ports:</span> [<span class="ys">"5432:5432"</span>]
+      <span class="yk">env:</span>
+        <span class="yk">POSTGRES_DB:</span> demoapp
+        <span class="yk">POSTGRES_USER:</span> demoapp
+        <span class="yk">POSTGRES_PASSWORD:</span> <span class="ys">"changeme"</span>
+    <span class="yk">healthcheck:</span>
+      <span class="yk">type:</span> tcp
+      <span class="yk">port:</span> <span class="yn">5432</span>
+      <span class="yk">start_period:</span> <span class="ys">20s</span>
+
+  <span class="yk">api:</span>
+    <span class="yk">source:</span>
+      <span class="yk">type:</span> docker
+      <span class="yk">image:</span> ghcr.io/acme/api
+      <span class="yk">tag:</span> <span class="ys">"v1.5"</span>
+    <span class="yk">run:</span>
+      <span class="yk">type:</span> docker
+      <span class="yk">container_name:</span> demo-api
+      <span class="yk">ports:</span> [<span class="ys">"8080:8080"</span>]
+      <span class="yk">env:</span>
+        <span class="yk">DATABASE_URL:</span> <span class="ys">"postgres://demoapp:changeme@localhost:5432/demoapp"</span>
+    <span class="yk">healthcheck:</span>
+      <span class="yk">type:</span> http
+      <span class="yk">url:</span> <span class="ys">http://localhost:8080/health</span>
+      <span class="yk">expect_status:</span> <span class="yn">200</span>
+    <span class="yk">depends_on:</span> [db]
+
+<span class="yk">deployment:</span>
+  - <span class="yk">host:</span> app-01
+    <span class="yk">components:</span> [db, api]
+    <span class="yk">strategy:</span> sequential</pre>
+              </div>
+            </div>
+
+            <div class="pane">
+              <div class="pane-h"><span class="badge alt">control plane</span> <span>Wizard ×2 + Add component</span></div>
+              <div class="pane-body">
+<ol class="steps-mini">
+  <li><strong>Create the deploy with <code>db</code> first</strong> — Wizard, image <code>postgres:16</code>, port <code>5432:5432</code>, env <code>POSTGRES_*</code>, healthcheck TCP <code>5432</code>. <span class="nav">Create deploy</span>.</li>
+  <li>Land on <span class="nav">Deploys → demo-stack</span>. Click <span class="nav">+ Add component</span> on the deploy detail page.</li>
+  <li>Wizard reopens with entry <code>add-component</code> already filled with the parent deploy.</li>
+  <li><strong>Intent</strong> — component <code>api</code>; tick the <em>Depends on</em> box and select <code>db</code>.</li>
+  <li><strong>Source</strong> — Docker image <code>ghcr.io/acme/api:v1.5</code>.</li>
+  <li><strong>Runtime</strong> — port <code>8080:8080</code>, env <code>DATABASE_URL=…</code>, healthcheck HTTP <code>/health</code>.</li>
+  <li><span class="nav">Review</span> shows the merged YAML. <span class="nav">Apply patch</span> creates v2.</li>
+</ol>
+                <div class="callout" style="margin-top:14px">
+                  The Wizard creates one component per pass. Adding more uses
+                  the <code>add-component</code> entry point, which patches
+                  the existing YAML and bumps the version. If you'd rather
+                  edit the YAML directly, use the <strong>Edit YAML</strong>
+                  tab on the deploy detail page.
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ───────── RECIPE 3 ───────── -->
+        <section class="guide-section" id="recipe-3">
+          <div class="section-label">// recipe 03</div>
+          <div class="recipe-meta">templated config · vault-backed secrets</div>
+          <h3>Templates and secrets</h3>
+          <p>
+            For anything beyond plain env-vars, use
+            <code>config.templates</code>. The CP renders a Jinja2 template
+            into a target path on the host, with <code>config.vars</code> as
+            plaintext interpolation and <code>config.secrets</code> resolved
+            from the vault backend at apply time. Secrets never appear in
+            the on-disk YAML.
+          </p>
+
+          <div class="split">
+            <div class="pane">
+              <div class="pane-h"><span class="badge">yaml</span> <span>deployment.yaml (excerpt)</span></div>
+              <div class="pane-body">
+<pre><span class="yk">components:</span>
+  <span class="yk">api:</span>
+    <span class="yk">source:</span>
+      <span class="yk">type:</span> git
+      <span class="yk">repo:</span> <span class="ys">https://github.com/acme/api.git</span>
+      <span class="yk">ref:</span> <span class="ys">main</span>
+    <span class="yk">build:</span>
+      - <span class="yk">command:</span> <span class="ys">npm ci</span>
+      - <span class="yk">command:</span> <span class="ys">npm run build</span>
+    <span class="yk">config:</span>
+      <span class="yk">templates:</span>
+        - <span class="yk">source:</span> <span class="ys">configs/api.env.j2</span>
+          <span class="yk">dest:</span>   <span class="ys">/etc/acme/api.env</span>
+          <span class="yk">mode:</span>   <span class="ys">"0640"</span>
+      <span class="yk">vars:</span>
+        <span class="yk">DB_HOST:</span> <span class="ys">"{{ hosts['db-01'].address }}"</span>
+        <span class="yk">DB_PORT:</span> <span class="yn">5432</span>
+        <span class="yk">LOG_LEVEL:</span> info
+      <span class="yk">secrets:</span>
+        <span class="yk">DB_PASSWORD:</span>  <span class="ys">"{{ vault://db/password }}"</span>
+        <span class="yk">JWT_SECRET:</span>   <span class="ys">"{{ vault://jwt/secret }}"</span>
+    <span class="yk">run:</span>
+      <span class="yk">type:</span> systemd
+      <span class="yk">unit_name:</span> acme-api
+      <span class="yk">command:</span> <span class="ys">/usr/bin/node /opt/acme-api/dist/server.js</span>
+      <span class="yk">working_directory:</span> <span class="ys">/opt/acme-api</span>
+      <span class="yk">user:</span> deploy
+      <span class="yk">restart:</span> on-failure
+    <span class="yk">healthcheck:</span>
+      <span class="yk">type:</span> http
+      <span class="yk">url:</span> <span class="ys">http://localhost:3000/health</span>
+      <span class="yk">expect_status:</span> <span class="yn">200</span></pre>
+              </div>
+            </div>
+
+            <div class="pane">
+              <div class="pane-h"><span class="badge alt">control plane</span> <span>YAML editor + Vault</span></div>
+              <div class="pane-body">
+                <p style="margin:0 0 10px">
+                  The Wizard intentionally stays simple, so it doesn't expose
+                  templates, build steps, or vault references. Reach them
+                  through the YAML editor:
+                </p>
+<ol class="steps-mini">
+  <li>Sidebar → <span class="nav">Deploys</span> → click your deploy.</li>
+  <li>Switch to the <span class="nav">YAML</span> tab. The editor shows the current version.</li>
+  <li>Add the <code>config.templates</code> + <code>config.vars</code> + <code>config.secrets</code> blocks. Templates live next to the YAML in your repo (<code>configs/api.env.j2</code>) and are uploaded with the deploy bundle.</li>
+  <li>Hit <span class="nav">Validate</span>. The CP type-checks the schema, resolves <code>{{ vault://… }}</code> references against the configured backend, and refuses the deploy if any are missing.</li>
+  <li><span class="nav">Diff</span> shows what each daemon would change (file content hash, restart yes/no).</li>
+  <li><span class="nav">Apply</span> creates a new version and starts the rollout.</li>
+</ol>
+                <div class="callout warn" style="margin-top:14px">
+                  <strong>Vault integration is Phase&nbsp;2.</strong> Today
+                  <code>vault://…</code> references work against the local
+                  encrypted credentials file (default
+                  <code>credentials.yaml</code> next to the deployment).
+                  HashiCorp Vault and cloud KMS backends are scheduled for
+                  Phase&nbsp;2 — see <code>credentials_ref</code> in the schema.
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ───────── RECIPE 4 ───────── -->
+        <section class="guide-section" id="recipe-4">
+          <div class="section-label">// recipe 04</div>
+          <div class="recipe-meta">multi-host · cross-host ordering · parallel rollout</div>
+          <h3>Multi-host with rollout strategy</h3>
+          <p>
+            When a deploy spans more than one host, two knobs matter:
+            <code>strategy</code> (per host group, controls intra-group
+            rollout) and <code>depends_on_hosts</code> (cross-group ordering
+            — wait for these hosts to go green before starting). Strategy
+            <code>parallel</code> hits everyone at once;
+            <code>sequential</code> walks them one by one with a healthcheck
+            in between.
+          </p>
+
+          <div class="split">
+            <div class="pane">
+              <div class="pane-h"><span class="badge">yaml</span> <span>deployment.yaml (deployment block)</span></div>
+              <div class="pane-body">
+<pre><span class="yk">hosts:</span>
+  <span class="yk">db-01:</span>  { <span class="yk">type:</span> linux, <span class="yk">address:</span> <span class="ys">10.0.0.20</span> }
+  <span class="yk">api-01:</span> { <span class="yk">type:</span> linux, <span class="yk">address:</span> <span class="ys">10.0.0.21</span> }
+  <span class="yk">api-02:</span> { <span class="yk">type:</span> linux, <span class="yk">address:</span> <span class="ys">10.0.0.22</span> }
+  <span class="yk">web-01:</span> { <span class="yk">type:</span> linux, <span class="yk">address:</span> <span class="ys">10.0.0.23</span> }
+
+<span class="yc"># components: { db, api, web } as before…</span>
+
+<span class="yk">deployment:</span>
+  - <span class="yk">host:</span> db-01
+    <span class="yk">components:</span> [db]
+
+  - <span class="yk">host:</span> api-01
+    <span class="yk">components:</span> [api]
+    <span class="yk">depends_on_hosts:</span> [db-01]
+    <span class="yk">strategy:</span> sequential
+  - <span class="yk">host:</span> api-02
+    <span class="yk">components:</span> [api]
+    <span class="yk">depends_on_hosts:</span> [db-01]
+    <span class="yk">strategy:</span> sequential
+
+  - <span class="yk">host:</span> web-01
+    <span class="yk">components:</span> [web]
+    <span class="yk">depends_on_hosts:</span> [api-01, api-02]
+    <span class="yk">strategy:</span> parallel</pre>
+              </div>
+            </div>
+
+            <div class="pane">
+              <div class="pane-h"><span class="badge alt">control plane</span> <span>Wizard → Placement + Runtime</span></div>
+              <div class="pane-body">
+<ol class="steps-mini">
+  <li>In the Wizard, when you reach <strong>Placement</strong>, tick all the hosts the component should land on (e.g. <code>api-01</code> and <code>api-02</code>).</li>
+  <li>On <strong>Runtime</strong>, the <em>Strategy</em> dropdown unlocks once you've selected more than one host. Pick <code>parallel</code>, <code>sequential</code>, or <code>canary</code> (Phase 2).</li>
+  <li>Cross-host ordering (<code>depends_on_hosts</code>) is not in the Wizard yet — write it directly in the YAML editor on the deploy detail page.</li>
+  <li>What you'll see on <span class="nav">Apply</span>: each binding becomes a row in the rollout panel. Sequential ones light up one at a time; parallel ones light up together. Failure on any host pauses the rollout for the bindings that depend on it.</li>
+</ol>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ───────── LIFECYCLE ───────── -->
+        <section class="guide-section" id="lifecycle">
+          <div class="section-label">// lifecycle</div>
+          <h3>Validate → Diff → Apply</h3>
+          <p>
+            Every change goes through the same three-step pipeline. Each
+            step is a separate API call, so an agent can pause between any
+            two — most conversations end after <code>diff</code>, with the
+            human saying "go" before <code>apply</code> runs.
+          </p>
+
+          <div class="lifecycle">
+            <div class="lf-step">
+              <div class="verb">validate</div>
+              <div class="what">Type-check the YAML, resolve refs, verify secrets exist.</div>
+              <div class="who">CP only · no daemon traffic</div>
+            </div>
+            <div class="lf-step">
+              <div class="verb">diff</div>
+              <div class="what">Ask each target daemon what would change. Returns a structured plan.</div>
+              <div class="who">CP → daemons (read-only)</div>
+            </div>
+            <div class="lf-step">
+              <div class="verb">apply</div>
+              <div class="what">Execute the plan. Stream runner output back. Record the result.</div>
+              <div class="who">CP → daemons (writes)</div>
+            </div>
+          </div>
+
+          <div class="callout">
+            <strong>Where you see this in the UI:</strong> on the deploy
+            detail page, the buttons run in this order. The <em>Versions</em>
+            list on the right shows every <code>v1, v2, v3…</code> that's
+            been applied; click one to view its YAML and the apply log.
+          </div>
+        </section>
+
+        <!-- ───────── ROLLBACK ───────── -->
+        <section class="guide-section" id="rollback">
+          <div class="section-label">// rollback</div>
+          <h3>Rollback</h3>
+          <p>
+            Rollback uses the same pipeline with a <em>previous</em> version
+            as target. The CP doesn't delete the failing version — it just
+            flips the active pointer back and re-applies. The bad version
+            stays in the history for forensics.
+          </p>
+
+          <div class="split">
+            <div class="pane">
+              <div class="pane-h"><span class="badge alt">control plane</span> <span>Deploys → detail</span></div>
+              <div class="pane-body">
+<ol class="steps-mini">
+  <li>Open the broken deploy.</li>
+  <li>In the <strong>Versions</strong> list, find the last known-good <code>v<em>n</em></code>.</li>
+  <li>Click <span class="nav">Rollback to v<em>n</em></span>. Confirm in the modal.</li>
+  <li>The CP runs <code>diff</code> + <code>apply</code> with v<em>n</em> as target. A new version <code>v<em>n+k</em></code> is recorded with <em>type: rollback</em>.</li>
+</ol>
+              </div>
+            </div>
+            <div class="pane">
+              <div class="pane-h"><span class="badge">api</span> <span>scripted equivalent</span></div>
+              <div class="pane-body">
+<pre><span class="yc"># list versions:</span>
+$ curl -s <span class="ys">https://cp/api/deploys/dpl_abc123</span> | jq <span class="ys">.versions</span>
+
+<span class="yc"># roll back to v3:</span>
+$ curl -X POST <span class="ys">https://cp/api/deploys/dpl_abc123/rollback/3</span> \
+    -H <span class="ys">"cookie: session=…"</span></pre>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ───────── API REFERENCE ───────── -->
+        <section class="guide-section" id="api">
+          <div class="section-label">// api reference</div>
+          <h3>Deploy endpoints</h3>
+          <p>
+            All endpoints live under <code>/api</code>. Auth is a session
+            cookie obtained from <code>POST /api/auth/login</code>. For
+            agents, the same surface is exposed as MCP verbs — see
+            <a class="link-accent" href="https://github.com/EnzinoBB/Maestro/blob/main/skill/SKILL.md" rel="noopener">SKILL.md</a>.
+          </p>
+
+          <div class="api-table">
+            <div class="api-row">
+              <div>verb</div><div>path</div><div>what it does</div>
+            </div>
+            <div class="api-row">
+              <div class="verb">GET</div>
+              <div class="path">/api/deploys</div>
+              <div>List deploys visible to the current user (RBAC-filtered).</div>
+            </div>
+            <div class="api-row">
+              <div class="verb">POST</div>
+              <div class="path">/api/deploys</div>
+              <div>Create a new deploy from a YAML body. Returns <code>deploy_id</code> and the initial <code>v1</code>.</div>
+            </div>
+            <div class="api-row">
+              <div class="verb">GET</div>
+              <div class="path">/api/deploys/{id}</div>
+              <div>Read the deploy + every version + apply history.</div>
+            </div>
+            <div class="api-row">
+              <div class="verb">POST</div>
+              <div class="path">/api/deploys/{id}/validate</div>
+              <div>Validate the latest YAML on this deploy without touching daemons.</div>
+            </div>
+            <div class="api-row">
+              <div class="verb">POST</div>
+              <div class="path">/api/deploys/{id}/diff</div>
+              <div>Ask daemons what would change. Returns a per-host structured plan.</div>
+            </div>
+            <div class="api-row">
+              <div class="verb">POST</div>
+              <div class="path">/api/deploys/{id}/apply</div>
+              <div>Run the plan. Stream events back via WS at <code>/ws/events</code>.</div>
+            </div>
+            <div class="api-row">
+              <div class="verb">POST</div>
+              <div class="path">/api/deploys/{id}/rollback/{n}</div>
+              <div>Re-apply version <em>n</em> as a new rollback version.</div>
+            </div>
+            <div class="api-row">
+              <div class="verb">DELETE</div>
+              <div class="path">/api/deploys/{id}</div>
+              <div>Tombstone the deploy. Does not stop the components on the daemons; do that with an apply on an emptied YAML first if you want a clean teardown.</div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ───────── PREREQS ───────── -->
+        <section class="guide-section" id="prereqs">
+          <div class="section-label">// before you start</div>
+          <h3>Prerequisites checklist</h3>
+          <ul style="line-height:1.85; color:var(--fg)">
+            <li>A running CP (<a class="link-accent" href="index.html#quickstart">Quickstart</a>).</li>
+            <li>An admin account (created via the first-run setup form).</li>
+            <li>At least one daemon enrolled — <span class="nav">Nodes → Enroll new daemon</span> in the SPA, or the CLI installer with a token.</li>
+            <li>A reachable Docker registry (or a Git URL) for the component <code>source</code>.</li>
+            <li>For templated configs: the templates committed alongside the YAML in your repo.</li>
+            <li>For secrets: <code>credentials.yaml</code> in the same directory, or a configured vault backend.</li>
+          </ul>
+        </section>
+
+      </article>
+
+      <aside class="guide-toc" aria-label="Table of contents">
+        <div class="guide-toc-h">on this page</div>
+        <a href="#concepts">Concepts</a>
+        <a href="#recipe-1">01 · Hello, Nginx</a>
+        <a href="#recipe-2">02 · API + Postgres</a>
+        <a href="#recipe-3">03 · Templates + secrets</a>
+        <a href="#recipe-4">04 · Multi-host rollout</a>
+        <a href="#lifecycle">Validate → Diff → Apply</a>
+        <a href="#rollback">Rollback</a>
+        <a href="#api">API reference</a>
+        <a href="#prereqs">Prerequisites</a>
+      </aside>
+
+    </div>
+  </div>
+</section>
+
+</main>
+
+<!-- ───────────── FOOTER ───────────── -->
+<footer class="footer" role="contentinfo">
+  <div class="container footer-inner">
+    <div class="footer-brand">
+      <div class="wordmark wordmark-lg">maestro<span class="accent">.</span></div>
+      <div class="footer-tag">
+        A YAML, a Python orchestrator, a Go daemon per host. Stop.
+      </div>
+    </div>
+
+    <div class="footer-col">
+      <div class="footer-h">Docs</div>
+      <a href="index.html#quickstart">Quickstart</a>
+      <a href="guide.html">Deployment guide</a>
+      <a href="https://github.com/EnzinoBB/Maestro/blob/main/docs/yaml-schema.md" rel="noopener">YAML schema</a>
+      <a href="https://github.com/EnzinoBB/Maestro/blob/main/docs/architecture.md" rel="noopener">Architecture</a>
+      <a href="https://github.com/EnzinoBB/Maestro/blob/main/skill/SKILL.md" rel="noopener">SKILL.md</a>
+    </div>
+
+    <div class="footer-col">
+      <div class="footer-h">Project</div>
+      <a href="https://github.com/EnzinoBB/Maestro" rel="noopener">GitHub</a>
+      <a href="https://github.com/EnzinoBB/Maestro/issues" rel="noopener">Issues</a>
+      <a href="https://github.com/EnzinoBB/Maestro/releases" rel="noopener">Releases</a>
+      <a href="https://github.com/EnzinoBB/Maestro/blob/main/LICENSE" rel="noopener">License</a>
+    </div>
+
+    <div class="footer-col">
+      <div class="footer-h">Meta</div>
+      <div class="footer-sub">Apache-2.0</div>
+      <div class="footer-sub">No trackers</div>
+      <div class="footer-sub">Static site</div>
+    </div>
+  </div>
+  <div class="container footer-bottom">
+    <span><span class="c-p">$</span> maestro --version</span>
+    <span class="footer-ver">0.3.1</span>
+  </div>
+</footer>
+
+<script src="site.js" defer></script>
+</body>
+</html>
