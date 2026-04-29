@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 import httpx
 
@@ -22,6 +23,13 @@ try:
     MCP_AVAILABLE = True
 except Exception:  # pragma: no cover
     MCP_AVAILABLE = False
+
+
+def _auth_headers() -> dict:
+    key = os.environ.get("MAESTRO_API_KEY") or ""
+    if not key:
+        return {}
+    return {"Authorization": f"Bearer {key}"}
 
 
 def _schema_yaml_only() -> dict:
@@ -47,17 +55,18 @@ class MCPClient:
 
     async def _post(self, path: str, json_body=None, params=None) -> dict:
         async with httpx.AsyncClient(timeout=300.0) as c:
-            r = await c.post(self.base + path, json=json_body, params=params or {})
+            r = await c.post(self.base + path, json=json_body,
+                             params=params or {}, headers=_auth_headers())
             try:
                 return r.json()
             except Exception:
                 return {"ok": False, "error": {"code": "http", "message": r.text}}
 
     async def _post_yaml(self, path: str, yaml_text: str, params=None) -> dict:
+        headers = {"content-type": "text/yaml", **_auth_headers()}
         async with httpx.AsyncClient(timeout=300.0) as c:
             r = await c.post(self.base + path, content=yaml_text,
-                             headers={"content-type": "text/yaml"},
-                             params=params or {})
+                             headers=headers, params=params or {})
             try:
                 return r.json()
             except Exception:
@@ -65,7 +74,8 @@ class MCPClient:
 
     async def _get(self, path: str, params=None) -> dict:
         async with httpx.AsyncClient(timeout=60.0) as c:
-            r = await c.get(self.base + path, params=params or {})
+            r = await c.get(self.base + path, params=params or {},
+                            headers=_auth_headers())
             try:
                 return r.json()
             except Exception:
