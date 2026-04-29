@@ -1,26 +1,8 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Mono, Pill, Icons, StatusDot, relTime, Sparkline } from "../primitives";
-import { useHostCpuSeries } from "../api/client";
+import { useHostCpuSeries, useNodes, type Node } from "../api/client";
 import { useAuth } from "../hooks/useAuth";
 import { EnrollDrawer, NodesEmpty } from "../components/EnrollDrawer";
-
-type Node = {
-  id: string;
-  host_id: string;
-  node_type: "user" | "shared";
-  owner_user_id: string | null;
-  owner_org_id: string | null;
-  label: string | null;
-  created_at: number;
-  online: boolean;
-};
-
-async function fetchNodes(): Promise<{ nodes: Node[] }> {
-  const r = await fetch("/api/nodes", { credentials: "same-origin" });
-  if (!r.ok) throw new Error(`nodes fetch failed: ${r.status}`);
-  return r.json();
-}
 
 export function NodesScreen() {
   const { state } = useAuth();
@@ -28,11 +10,7 @@ export function NodesScreen() {
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [knownAtOpen, setKnownAtOpen] = useState<Set<string>>(new Set());
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: ["nodes"],
-    queryFn: fetchNodes,
-    refetchInterval: 5000,
-  });
+  const { data, isLoading, error } = useNodes();
   const nodes = data?.nodes ?? [];
 
   const openEnroll = useMemo(() => () => {
@@ -92,9 +70,12 @@ export function NodesScreen() {
 
 function NodeCard({ node }: { node: Node }) {
   const display = node.label || node.host_id;
-  const owner = node.node_type === "shared"
+  const ownerLabel = node.node_type === "shared"
     ? `org ${node.owner_org_id}`
-    : node.owner_user_id;
+    : (node.owner_username ? `@${node.owner_username}` : node.owner_user_id);
+  const ownerTitle = node.node_type === "shared"
+    ? (node.owner_org_id ?? undefined)
+    : (node.owner_user_id ?? undefined);
   return (
     <div className="cp-card" style={{ padding: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
@@ -106,7 +87,9 @@ function NodeCard({ node }: { node: Node }) {
         </Pill>
       </div>
       <div className="small dim mono" style={{ marginBottom: 8 }}>
-        host_id: {node.host_id} · owned by {owner} · created {relTime(node.created_at)}
+        host_id: {node.host_id} · owned by{" "}
+        <span title={ownerTitle}>{ownerLabel}</span>
+        {" "}· created {relTime(node.created_at)}
       </div>
       <NodeMiniMetrics hostId={node.host_id} online={node.online} />
     </div>
