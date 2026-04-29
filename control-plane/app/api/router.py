@@ -133,7 +133,7 @@ async def post_diff(request: Request):
 
 
 @router.post("/config/apply")
-async def post_apply(request: Request):
+async def post_apply(request: Request, uid: str = Depends(require_user)):
     yaml_text, template_store, files_store = await _read_apply_body(request)
     dry_run = request.query_params.get("dry_run", "false").lower() == "true"
     try:
@@ -171,7 +171,7 @@ async def post_apply(request: Request):
             default["id"],
             yaml_text=yaml_text,
             components_hash=ch,
-            applied_by_user_id="singleuser",
+            applied_by_user_id=uid,
             result_json=result.to_dict(),
             kind="apply",
         )
