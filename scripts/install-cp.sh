@@ -19,11 +19,6 @@
 #                       (defaults to /opt/maestro-cp-data) so the imported
 #                       DB lives on a host path, not in a docker volume.
 #                       Refuses to overwrite a non-empty target.
-#   --single-user       Run the CP without authentication (sets
-#                       MAESTRO_SINGLE_USER_MODE=true in the compose env).
-#                       Default since v0.2.5 is multi-user with first-run
-#                       admin setup via the login page. Use this only for
-#                       local/dev installs you fully trust the network on.
 #   --uninstall         Stop + remove container; keep volume
 #   --purge             With --uninstall: also remove volume and install dir
 set -euo pipefail
@@ -36,7 +31,6 @@ MODE="install"
 PURGE=""
 AUTO_UPDATE=""    # "" | "on" | "off"
 IMPORT_DB=""      # path to an existing cp DB to copy into --data-dir/cp.db
-SINGLE_USER=""    # "1" → set MAESTRO_SINGLE_USER_MODE=true in compose env
 
 INSTALL_DIR="/opt/maestro-cp"
 IMAGE="ghcr.io/enzinobb/maestro-cp"
@@ -59,7 +53,6 @@ while [[ $# -gt 0 ]]; do
     --auto-update=on)    AUTO_UPDATE="on"; shift;;
     --auto-update=off)   AUTO_UPDATE="off"; shift;;
     --import-db)         IMPORT_DB="$2"; shift 2;;
-    --single-user)       SINGLE_USER="1"; shift;;
     --uninstall)         MODE="uninstall"; shift;;
     --purge)             PURGE="1"; shift;;
     -h|--help)           usage 0;;
@@ -199,12 +192,8 @@ render_compose() {
     vol_spec="${DATA_DIR}:/data"
     named_volume=""
   fi
-  # Multi-user is the default since v0.2.5: anyone hitting the URL with
-  # SINGLE_USER_MODE=true would otherwise have root access without auth.
-  # The login page detects no-admin-yet and offers a "create admin" form
-  # on first visit. --single-user opts back into the legacy behaviour.
-  local single_user_env="false"
-  [[ -n "$SINGLE_USER" ]] && single_user_env="true"
+  # Authentication is always required. The login page detects no-admin-yet
+  # and offers a "create admin" form on first visit.
   cat > "$INSTALL_DIR/docker-compose.yml" <<EOF
 services:
   control-plane:
@@ -215,7 +204,6 @@ services:
     environment:
       MAESTRO_DB: /data/cp.db
       MAESTRO_LOG_LEVEL: INFO
-      MAESTRO_SINGLE_USER_MODE: "${single_user_env}"
     volumes:
       - ${vol_spec}
 EOF
