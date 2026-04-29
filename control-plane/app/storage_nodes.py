@@ -74,8 +74,7 @@ class NodesRepository:
     async def get(self, node_id: str) -> dict[str, Any]:
         async with aiosqlite.connect(self.path) as db:
             async with db.execute(
-                "SELECT id, host_id, node_type, owner_user_id, owner_org_id, "
-                "label, created_at FROM nodes WHERE id=?",
+                _NODE_SELECT + " WHERE n.id=?",
                 (node_id,),
             ) as cur:
                 row = await cur.fetchone()
@@ -86,8 +85,7 @@ class NodesRepository:
     async def get_by_host_id(self, host_id: str) -> dict[str, Any] | None:
         async with aiosqlite.connect(self.path) as db:
             async with db.execute(
-                "SELECT id, host_id, node_type, owner_user_id, owner_org_id, "
-                "label, created_at FROM nodes WHERE host_id=?",
+                _NODE_SELECT + " WHERE n.host_id=?",
                 (host_id,),
             ) as cur:
                 row = await cur.fetchone()
@@ -104,10 +102,8 @@ class NodesRepository:
             return await self._list_all()
         async with aiosqlite.connect(self.path) as db:
             async with db.execute(
-                "SELECT n.id, n.host_id, n.node_type, n.owner_user_id, n.owner_org_id, "
-                "n.label, n.created_at "
-                "FROM nodes n "
-                "WHERE n.owner_user_id = ? "
+                _NODE_SELECT
+                + " WHERE n.owner_user_id = ? "
                 "   OR n.id IN (SELECT node_id FROM node_access WHERE user_id = ?) "
                 "   OR (n.node_type = 'shared' AND n.owner_org_id IN ("
                 "       SELECT org_id FROM org_members WHERE user_id = ?)) "
@@ -120,8 +116,7 @@ class NodesRepository:
     async def _list_all(self) -> list[dict[str, Any]]:
         async with aiosqlite.connect(self.path) as db:
             async with db.execute(
-                "SELECT id, host_id, node_type, owner_user_id, owner_org_id, "
-                "label, created_at FROM nodes ORDER BY created_at ASC"
+                _NODE_SELECT + " ORDER BY n.created_at ASC"
             ) as cur:
                 rows = await cur.fetchall()
         return [_row_to_node(r) for r in rows]
@@ -163,6 +158,13 @@ class NodesRepository:
         return False
 
 
+_NODE_SELECT = (
+    "SELECT n.id, n.host_id, n.node_type, n.owner_user_id, n.owner_org_id, "
+    "n.label, n.created_at, u.username "
+    "FROM nodes n LEFT JOIN users u ON u.id = n.owner_user_id"
+)
+
+
 def _row_to_node(row) -> dict[str, Any]:
     return {
         "id": row[0],
@@ -172,6 +174,7 @@ def _row_to_node(row) -> dict[str, Any]:
         "owner_org_id": row[4],
         "label": row[5],
         "created_at": row[6],
+        "owner_username": row[7],
     }
 
 

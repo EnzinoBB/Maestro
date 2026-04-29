@@ -45,8 +45,7 @@ class DeployRepository:
     async def get(self, deploy_id: str) -> dict[str, Any]:
         async with aiosqlite.connect(self.path) as db:
             async with db.execute(
-                "SELECT id, name, owner_user_id, current_version, state_summary, "
-                "created_at, updated_at FROM deploys WHERE id=?",
+                _DEPLOY_SELECT + " WHERE d.id=?",
                 (deploy_id,),
             ) as cur:
                 row = await cur.fetchone()
@@ -57,9 +56,7 @@ class DeployRepository:
     async def list_for_owner(self, owner_user_id: str) -> list[dict[str, Any]]:
         async with aiosqlite.connect(self.path) as db:
             async with db.execute(
-                "SELECT id, name, owner_user_id, current_version, state_summary, "
-                "created_at, updated_at FROM deploys WHERE owner_user_id=? "
-                "ORDER BY created_at ASC",
+                _DEPLOY_SELECT + " WHERE d.owner_user_id=? ORDER BY d.created_at ASC",
                 (owner_user_id,),
             ) as cur:
                 rows = await cur.fetchall()
@@ -89,9 +86,7 @@ class DeployRepository:
     async def list_versions(self, deploy_id: str) -> list[dict[str, Any]]:
         async with aiosqlite.connect(self.path) as db:
             async with db.execute(
-                "SELECT id, version_n, yaml_text, components_hash, parent_version_id, "
-                "applied_at, applied_by_user_id, result_json, kind "
-                "FROM deploy_versions WHERE deploy_id=? ORDER BY version_n ASC",
+                _VERSION_SELECT + " WHERE v.deploy_id=? ORDER BY v.version_n ASC",
                 (deploy_id,),
             ) as cur:
                 rows = await cur.fetchall()
@@ -100,9 +95,7 @@ class DeployRepository:
     async def get_version(self, deploy_id: str, version_n: int) -> dict[str, Any]:
         async with aiosqlite.connect(self.path) as db:
             async with db.execute(
-                "SELECT id, version_n, yaml_text, components_hash, parent_version_id, "
-                "applied_at, applied_by_user_id, result_json, kind "
-                "FROM deploy_versions WHERE deploy_id=? AND version_n=?",
+                _VERSION_SELECT + " WHERE v.deploy_id=? AND v.version_n=?",
                 (deploy_id, version_n),
             ) as cur:
                 row = await cur.fetchone()
@@ -170,6 +163,23 @@ class DeployRepository:
             await db.commit()
 
 
+# LEFT JOIN on users so the row resolves owner_username / applied_by_username
+# in one round-trip. LEFT (not INNER) to tolerate a stale FK should one ever
+# slip past the schema constraint — UI can render `null` as "—" rather than
+# the row vanishing.
+_DEPLOY_SELECT = (
+    "SELECT d.id, d.name, d.owner_user_id, d.current_version, d.state_summary, "
+    "d.created_at, d.updated_at, u.username "
+    "FROM deploys d LEFT JOIN users u ON u.id = d.owner_user_id"
+)
+
+_VERSION_SELECT = (
+    "SELECT v.id, v.version_n, v.yaml_text, v.components_hash, v.parent_version_id, "
+    "v.applied_at, v.applied_by_user_id, v.result_json, v.kind, u.username "
+    "FROM deploy_versions v LEFT JOIN users u ON u.id = v.applied_by_user_id"
+)
+
+
 def _row_to_deploy(row) -> dict[str, Any]:
     return {
         "id": row[0],
@@ -179,6 +189,7 @@ def _row_to_deploy(row) -> dict[str, Any]:
         "state_summary": json.loads(row[4]) if row[4] else None,
         "created_at": row[5],
         "updated_at": row[6],
+        "owner_username": row[7],
     }
 
 
@@ -193,4 +204,5 @@ def _row_to_version(row) -> dict[str, Any]:
         "applied_by_user_id": row[6],
         "result_json": json.loads(row[7]) if row[7] else None,
         "kind": row[8],
+        "applied_by_username": row[9],
     }

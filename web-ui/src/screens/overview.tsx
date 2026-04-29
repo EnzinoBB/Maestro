@@ -1,18 +1,24 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useDeploys, useCreateDeploy, useDeploy, deployHealth, type Deploy } from "../api/client";
+import { useDeploys, useCreateDeploy, useDeploy, useNodes, deployHealth, type Deploy } from "../api/client";
 import { Pill, Icons, Mono, relTime, StatusDot } from "../primitives";
 import { DeploySparkline } from "../components/DeploySparkline";
 
 export function OverviewScreen() {
   const { data, isLoading, error } = useDeploys();
+  const nodesQ = useNodes();
   const create = useCreateDeploy();
   const [newName, setNewName] = useState("");
   const deploys = data?.deploys ?? [];
+  const nodes = nodesQ.data?.nodes ?? [];
 
   const totals = {
     deploys: deploys.length,
     withVersion: deploys.filter(d => d.current_version != null).length,
+    nodes: nodes.length,
+    nodesOnline: nodes.filter(n => n.online).length,
+    deploysHealthy: deploys.filter(d => deployHealth(d).status === "healthy").length,
+    deploysFailed: deploys.filter(d => deployHealth(d).status === "failed").length,
   };
 
   return (
@@ -29,19 +35,19 @@ export function OverviewScreen() {
           <div className="cp-stat__meta">{totals.withVersion} applied · {totals.deploys - totals.withVersion} empty</div>
         </div>
         <div className="cp-stat">
-          <div className="cp-stat__label"><Icons.alert size={12} /> Alerts</div>
-          <div className="cp-stat__value">—</div>
-          <div className="cp-stat__meta">metrics pending (M2)</div>
+          <div className="cp-stat__label"><Icons.alert size={12} /> Failed deploys</div>
+          <div className="cp-stat__value">{totals.deploysFailed}</div>
+          <div className="cp-stat__meta">last apply returned an error</div>
         </div>
         <div className="cp-stat">
           <div className="cp-stat__label"><Icons.node size={12} /> Nodes</div>
-          <div className="cp-stat__value">—</div>
-          <div className="cp-stat__meta">/api/nodes not yet wired</div>
+          <div className="cp-stat__value">{totals.nodes}</div>
+          <div className="cp-stat__meta">{totals.nodesOnline} online · {totals.nodes - totals.nodesOnline} offline</div>
         </div>
         <div className="cp-stat">
-          <div className="cp-stat__label"><Icons.check size={12} /> Components healthy</div>
-          <div className="cp-stat__value">—</div>
-          <div className="cp-stat__meta">awaiting daemon metrics</div>
+          <div className="cp-stat__label"><Icons.check size={12} /> Healthy deploys</div>
+          <div className="cp-stat__value">{totals.deploysHealthy}</div>
+          <div className="cp-stat__meta">last apply succeeded</div>
         </div>
       </section>
 
@@ -113,7 +119,9 @@ function DeployCard({ deploy }: { deploy: Deploy }) {
       <div className="cp-deploy-card__meta">
         <span><Mono dim>v{deploy.current_version ?? "—"}</Mono></span>
         <span>updated {relTime(deploy.updated_at)}</span>
-        <span><Mono dim>{deploy.owner_user_id}</Mono></span>
+        <span title={deploy.owner_user_id}>
+          <Mono dim>{deploy.owner_username ? `@${deploy.owner_username}` : deploy.owner_user_id}</Mono>
+        </span>
       </div>
       <div className="cp-deploy-card__sparkline">
         <DeploySparkline componentId={firstComponent} />

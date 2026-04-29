@@ -38,7 +38,11 @@ export function DeployDetailScreen() {
           <Mono dim>v{data.current_version ?? "—"}</Mono>
         </div>
         <div className="small dim mono" style={{ marginBottom: 16 }}>
-          {data.id} · owned by {data.owner_user_id} · created {relTime(data.created_at)}
+          {data.id} · owned by{" "}
+          <span title={data.owner_user_id}>
+            {data.owner_username ? `@${data.owner_username}` : data.owner_user_id}
+          </span>
+          {" "}· created {relTime(data.created_at)}
         </div>
       </div>
 
@@ -82,7 +86,9 @@ export function DeployDetailScreen() {
                     {v.kind === "rollback" && <span className="cp-badge"><Icons.rotate size={10} /> rollback</span>}
                     {isCurrent && <span className="cp-badge" style={{ color: "var(--accent)", borderColor: "var(--accent)" }}>current</span>}
                     <span className="small dim">{relTime(v.applied_at)}</span>
-                    <span className="small dim mono">by {v.applied_by_user_id}</span>
+                    <span className="small dim mono" title={v.applied_by_user_id}>
+                      by {v.applied_by_username ? `@${v.applied_by_username}` : v.applied_by_user_id}
+                    </span>
                     {!isCurrent && (
                       <button
                         type="button"

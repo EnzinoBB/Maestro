@@ -6,6 +6,7 @@ export type Deploy = {
   id: string;
   name: string;
   owner_user_id: string;
+  owner_username: string | null;
   current_version: number | null;
   state_summary: unknown;
   created_at: number;
@@ -20,6 +21,7 @@ export type DeployVersion = {
   parent_version_id: string | null;
   applied_at: number;
   applied_by_user_id: string;
+  applied_by_username: string | null;
   result_json: { ok?: boolean; error?: string | null } | null;
   kind: "apply" | "rollback";
 };
@@ -27,6 +29,18 @@ export type DeployVersion = {
 export type DeployWithVersions = Deploy & { versions: DeployVersion[] };
 
 export type Host = { host_id: string; online: boolean; system: Record<string, unknown> };
+
+export type Node = {
+  id: string;
+  host_id: string;
+  node_type: "user" | "shared";
+  owner_user_id: string | null;
+  owner_username: string | null;
+  owner_org_id: string | null;
+  label: string | null;
+  created_at: number;
+  online: boolean;
+};
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(`${BASE}${path}`, {
@@ -63,6 +77,14 @@ export function useHosts() {
   return useQuery({
     queryKey: ["hosts"],
     queryFn: () => api<{ hosts: Host[] }>("/api/hosts"),
+    refetchInterval: 5000,
+  });
+}
+
+export function useNodes() {
+  return useQuery({
+    queryKey: ["nodes"],
+    queryFn: () => api<{ nodes: Node[] }>("/api/nodes"),
     refetchInterval: 5000,
   });
 }
