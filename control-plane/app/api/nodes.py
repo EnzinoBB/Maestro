@@ -103,7 +103,6 @@ async def admin_list_users(request: Request, uid: str = Depends(require_user)):
             }
             for r in rows
         ],
-        "single_user_mode": False,
     }
 
 
