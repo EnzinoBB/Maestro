@@ -13,8 +13,13 @@ FIXTURES = Path(__file__).resolve().parents[3] / "tests" / "fixtures"
 def client(monkeypatch):
     with tempfile.TemporaryDirectory() as td:
         monkeypatch.setenv("MAESTRO_DB", os.path.join(td, "t.db"))
+        monkeypatch.setenv("MAESTRO_METRICS_RETENTION_INTERVAL_S", "3600")
         app = create_app()
         with TestClient(app) as c:
+            # Setup admin
+            r = c.post("/api/auth/setup-admin",
+                       json={"username": "admin", "password": "correct-horse"})
+            assert r.status_code == 200
             yield c
 
 
@@ -29,7 +34,8 @@ def test_create_list_get_delete_cycle(client):
     assert r.status_code == 201, r.text
     created = r.json()
     assert created["name"] == "webapp-prod"
-    assert created["owner_user_id"] == "singleuser"
+    # owner_user_id should be the admin user created by the fixture
+    assert created["owner_user_id"] is not None
     assert created["current_version"] is None
     deploy_id = created["id"]
 

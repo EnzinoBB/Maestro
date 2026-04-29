@@ -69,7 +69,7 @@ async def list_hosts(request: Request):
 
 
 @router.get("/config")
-async def get_config(request: Request):
+async def get_config(request: Request, uid: str = Depends(require_user)):
     """Legacy: return the latest applied YAML.
 
     Now sourced from the 'default' deploy's current version. Falls back to
@@ -77,7 +77,7 @@ async def get_config(request: Request):
     (which can happen on a fresh install that hasn't received an apply).
     """
     deploy_repo: DeployRepository = request.app.state.deploy_repo
-    default = await deploy_repo.get_by_name("singleuser", "default")
+    default = await deploy_repo.get_by_name(uid, "default")
     if default is None or default["current_version"] is None:
         storage = request.app.state.storage
         row = await storage.load_config()
@@ -160,9 +160,9 @@ async def post_apply(request: Request, uid: str = Depends(require_user)):
     if not dry_run:
         await storage.record_deploy(spec.project, result.ok, result.to_dict())
         # Route through the default deploy in the new schema
-        default = await deploy_repo.get_by_name("singleuser", "default")
+        default = await deploy_repo.get_by_name(uid, "default")
         if default is None:
-            default = await deploy_repo.create("default", owner_user_id="singleuser")
+            default = await deploy_repo.create("default", owner_user_id=uid)
         rendered = engine.render_all(
             spec, template_store=template_store, files_store=files_store,
         )

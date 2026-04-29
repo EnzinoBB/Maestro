@@ -10,21 +10,13 @@ from app.main import create_app
 
 @pytest.fixture
 def client(monkeypatch):
-    with tempfile.TemporaryDirectory() as td:
-        monkeypatch.setenv("MAESTRO_DB", os.path.join(td, "t.db"))
-        app = create_app()
-        with TestClient(app) as c:
-            yield c
-
-
-@pytest.fixture
-def client_multiuser(monkeypatch):
+    """Test client with admin pre-setup."""
     with tempfile.TemporaryDirectory() as td:
         monkeypatch.setenv("MAESTRO_DB", os.path.join(td, "t.db"))
         monkeypatch.setenv("MAESTRO_METRICS_RETENTION_INTERVAL_S", "3600")
-        monkeypatch.setenv("MAESTRO_SINGLE_USER_MODE", "false")
         app = create_app()
         with TestClient(app) as c:
+            # Setup admin
             r = c.post("/api/auth/setup-admin",
                        json={"username": "admin", "password": "correct-horse"})
             assert r.status_code == 200
@@ -83,14 +75,14 @@ def test_dry_run_apply(client):
     assert len(data["diff"]["changes"]) == 1  # 'web'
 
 
-def test_legacy_state_requires_auth_in_multiuser(client_multiuser):
-    client_multiuser.cookies.clear()
-    r = client_multiuser.get("/api/state")
+def test_legacy_state_requires_auth(client):
+    client.cookies.clear()
+    r = client.get("/api/state")
     assert r.status_code == 401
 
 
-def test_legacy_apply_requires_auth_in_multiuser(client_multiuser):
-    client_multiuser.cookies.clear()
-    r = client_multiuser.post("/api/config/apply", content="project: p\n",
-                              headers={"content-type": "text/yaml"})
+def test_legacy_apply_requires_auth(client):
+    client.cookies.clear()
+    r = client.post("/api/config/apply", content="project: p\n",
+                    headers={"content-type": "text/yaml"})
     assert r.status_code == 401

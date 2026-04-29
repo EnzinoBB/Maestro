@@ -1,11 +1,14 @@
 import base64
 import hashlib
 import io
+import os
 import tarfile
+import tempfile
+import pytest
 from fastapi.testclient import TestClient
 from app.config.loader import parse_deployment
 from app.config.renderer import render_component
-from app.main import app
+from app.main import create_app
 
 
 _YAML_FILES_STORE = """
@@ -39,7 +42,21 @@ def _tar_of(files: dict[str, bytes]) -> bytes:
     return buf.getvalue()
 
 
-def test_apply_accepts_files_store_in_body():
+@pytest.fixture
+def client(monkeypatch):
+    with tempfile.TemporaryDirectory() as td:
+        monkeypatch.setenv("MAESTRO_DB", os.path.join(td, "t.db"))
+        monkeypatch.setenv("MAESTRO_METRICS_RETENTION_INTERVAL_S", "3600")
+        app = create_app()
+        with TestClient(app) as c:
+            # Setup admin
+            r = c.post("/api/auth/setup-admin",
+                       json={"username": "admin", "password": "correct-horse"})
+            assert r.status_code == 200
+            yield c
+
+
+def test_apply_accepts_files_store_in_body(client):
     """HTTP 200 is returned and the diff reflects the archive from files_store."""
     tar_bytes = _tar_of({"index.html": b"<h1>x</h1>"})
     tar_b64 = base64.b64encode(tar_bytes).decode()
@@ -47,9 +64,8 @@ def test_apply_accepts_files_store_in_body():
         "yaml_text": _YAML_FILES_STORE,
         "files_store": {"site": tar_b64},
     }
-    with TestClient(app) as client:
-        # dry-run so we don't need daemon connection
-        r = client.post("/api/config/apply?dry_run=true", json=body)
+    # dry-run so we don't need daemon connection
+    r = client.post("/api/config/apply?dry_run=true", json=body)
     assert r.status_code == 200, r.text
     data = r.json()
     assert data.get("ok") is not False
@@ -79,14 +95,13 @@ def test_files_store_content_reaches_renderer():
     assert a.strategy == "atomic_symlink"
 
 
-def test_apply_rejects_non_string_files_store_value():
+def test_apply_rejects_non_string_files_store_value(client):
     """files_store with an integer value must return HTTP 400 naming the key."""
     body = {
         "yaml_text": _YAML_FILES_STORE,
         "files_store": {"site": 123},
     }
-    with TestClient(app) as client:
-        r = client.post("/api/config/apply?dry_run=true", json=body)
+    r = client.post("/api/config/apply?dry_run=true", json=body)
     assert r.status_code == 400, r.text
     resp = r.json()
     assert resp["ok"] is False
