@@ -118,6 +118,20 @@ CREATE TABLE IF NOT EXISTS node_access (
 
 CREATE INDEX IF NOT EXISTS idx_nodes_owner_user ON nodes(owner_user_id);
 CREATE INDEX IF NOT EXISTS idx_nodes_owner_org ON nodes(owner_org_id);
+
+-- Per-user API keys (used by MCP and other automations)
+CREATE TABLE IF NOT EXISTS api_keys (
+    id           TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    label        TEXT NOT NULL,
+    prefix       TEXT NOT NULL,
+    key_hash     TEXT NOT NULL,
+    created_at   REAL NOT NULL,
+    last_used_at REAL,
+    revoked_at   REAL
+);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
+CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(prefix);
 """
 
 _SEED_SINGLEUSER = """

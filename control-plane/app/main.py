@@ -27,8 +27,11 @@ from .api.deploys import router as deploys_router
 from .api.metrics import router as metrics_router
 from .api.wizard import router as wizard_router
 from .api.auth import router as auth_router
+from .api.api_keys import router as api_keys_router
 from .api.nodes import router as nodes_router
+from .api._errors import install_error_handlers
 from .auth.users_repo import UsersRepository
+from .auth.api_keys_repo import ApiKeysRepository
 from .auth.middleware import CurrentUserMiddleware, SINGLEUSER_ID
 from .storage_nodes import NodesRepository, OrganizationsRepository
 from starlette.middleware.sessions import SessionMiddleware
@@ -61,6 +64,7 @@ async def lifespan(app: FastAPI):
     app.state.deploy_repo = DeployRepository(db_path)
     app.state.metrics_repo = metrics_repo
     app.state.users_repo = UsersRepository(db_path)
+    app.state.api_keys_repo = ApiKeysRepository(db_path)
     app.state.nodes_repo = NodesRepository(db_path)
     app.state.orgs_repo = OrganizationsRepository(db_path)
     app.state.hub = hub
@@ -112,6 +116,8 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(title="Maestro Control Plane", version="0.1.0", lifespan=lifespan)
 
+    install_error_handlers(app)
+
     # Starlette middleware: last add_middleware becomes outermost (runs first
     # on request). We want SessionMiddleware to parse the cookie BEFORE
     # CurrentUserMiddleware reads the session, so CurrentUserMiddleware is
@@ -133,6 +139,7 @@ def create_app() -> FastAPI:
     app.include_router(metrics_router)
     app.include_router(wizard_router)
     app.include_router(auth_router)
+    app.include_router(api_keys_router)
     app.include_router(nodes_router)
     app.include_router(ui_router)
     app.include_router(install_router)

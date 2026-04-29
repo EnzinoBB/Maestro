@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Request
 
 from ..auth.passwords import hash_password, verify_password
 from ..auth.users_repo import UsersRepository, UserAlreadyExists, UserNotFound
-from ..auth.middleware import SINGLEUSER_ID, is_single_user_mode
+from ..auth.middleware import SINGLEUSER_ID
 
 
 router = APIRouter(prefix="/api/auth")
@@ -118,19 +118,14 @@ async def post_change_password(request: Request):
 @router.get("/me")
 async def get_me(request: Request):
     users = _users(request)
-    smode = is_single_user_mode()
-    # First-run flag: in multi-user mode with no real admin yet, the login
-    # page should switch to a "create your admin" form instead of asking
-    # for credentials that don't exist.
-    needs_setup = (not smode) and (await users.count_non_singleuser() == 0)
+    needs_setup = await users.count_non_singleuser() == 0
 
     uid = getattr(request.state, "user_id", None)
-    if uid:
+    if uid and uid != SINGLEUSER_ID:
         try:
             u = await users.get(uid)
             return {
                 "authenticated": True,
-                "single_user_mode": smode,
                 "needs_setup": needs_setup,
                 "id": u["id"],
                 "username": u["username"],
@@ -140,6 +135,5 @@ async def get_me(request: Request):
             pass
     return {
         "authenticated": False,
-        "single_user_mode": smode,
         "needs_setup": needs_setup,
     }

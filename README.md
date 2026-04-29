@@ -55,14 +55,13 @@ URL printed in the daemon installer scripts served from
 
 ### 2. First-run setup (in the browser)
 
-Open `http://<cp-host>:8000`. Because `MAESTRO_SINGLE_USER_MODE=false`
-is the installer default, the CP refuses anonymous traffic and shows
-the **first-run setup** form: pick an admin username + passphrase and
-submit. You land on the dashboard signed in as that user.
+Open `http://<cp-host>:8000`. The first visit shows a "create admin" form
+(no admin account exists yet). After creating the first admin you can log
+in normally; subsequent users are added via the admin UI.
 
-If you prefer the legacy unauthenticated mode (development only — the
-CP becomes accessible to anyone who can reach the port), set
-`MAESTRO_SINGLE_USER_MODE=true` and restart.
+All `/api/*` endpoints require authentication: a session cookie (web UI) or
+an `Authorization: Bearer mae_…` API key (MCP, automation). Generate keys
+from **Settings → API keys** in the dashboard.
 
 ### 3. Enroll a daemon (in the browser)
 
@@ -130,6 +129,30 @@ In the SPA, **Admin** in the sidebar (admins only) lets you:
 The first user (created via first-run setup) is automatically `admin`.
 Subsequent users default to `operator` and can be promoted from the
 admin screen.
+
+### 6. Using the MCP server
+
+The Maestro MCP server lets Claude Code (and any other MCP-compatible client)
+operate Maestro on your behalf. Each user generates their own API key from
+**Settings → API keys** in the dashboard.
+
+Configure your MCP client (e.g. `claude_desktop_config.json` for Claude
+Desktop, or your IDE-specific MCP config):
+
+```json
+{
+  "mcpServers": {
+    "maestro": {
+      "command": "python",
+      "args": ["-m", "app.mcp.server", "--control-plane", "http://<cp-host>:8000"],
+      "env": { "MAESTRO_API_KEY": "mae_..." }
+    }
+  }
+}
+```
+
+The key inherits the same permissions as the user who generated it. Revoke
+keys at any time from the dashboard; revocation takes effect immediately.
 
 ### For contributors — build from source
 

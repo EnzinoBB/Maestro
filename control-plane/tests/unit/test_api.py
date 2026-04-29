@@ -10,10 +10,16 @@ from app.main import create_app
 
 @pytest.fixture
 def client(monkeypatch):
+    """Test client with admin pre-setup."""
     with tempfile.TemporaryDirectory() as td:
         monkeypatch.setenv("MAESTRO_DB", os.path.join(td, "t.db"))
+        monkeypatch.setenv("MAESTRO_METRICS_RETENTION_INTERVAL_S", "3600")
         app = create_app()
         with TestClient(app) as c:
+            # Setup admin
+            r = c.post("/api/auth/setup-admin",
+                       json={"username": "admin", "password": "correct-horse"})
+            assert r.status_code == 200
             yield c
 
 
@@ -67,3 +73,16 @@ def test_dry_run_apply(client):
     assert data["ok"] is True
     assert data["diff"] is not None
     assert len(data["diff"]["changes"]) == 1  # 'web'
+
+
+def test_legacy_state_requires_auth(client):
+    client.cookies.clear()
+    r = client.get("/api/state")
+    assert r.status_code == 401
+
+
+def test_legacy_apply_requires_auth(client):
+    client.cookies.clear()
+    r = client.post("/api/config/apply", content="project: p\n",
+                    headers={"content-type": "text/yaml"})
+    assert r.status_code == 401

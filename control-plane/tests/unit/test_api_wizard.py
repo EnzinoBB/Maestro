@@ -15,6 +15,10 @@ def client(monkeypatch):
         monkeypatch.setenv("MAESTRO_METRICS_RETENTION_INTERVAL_S", "3600")
         app = create_app()
         with TestClient(app) as c:
+            # Setup admin
+            r = c.post("/api/auth/setup-admin",
+                       json={"username": "admin", "password": "correct-horse"})
+            assert r.status_code == 200
             yield c
 
 

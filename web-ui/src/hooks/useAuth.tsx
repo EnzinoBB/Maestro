@@ -3,9 +3,8 @@ import { useQueryClient } from "@tanstack/react-query";
 
 export type AuthState =
   | { status: "loading" }
-  | { status: "single-user"; id: string; username: string; is_admin: boolean }
   | { status: "needs-setup" }
-  | { status: "anonymous"; single_user_mode: boolean }
+  | { status: "anonymous" }
   | { status: "authenticated"; id: string; username: string; is_admin: boolean };
 
 type AuthCtx = {
@@ -20,18 +19,20 @@ const Ctx = createContext<AuthCtx | null>(null);
 
 async function fetchMe(): Promise<AuthState> {
   const r = await fetch("/api/auth/me", { credentials: "same-origin" });
-  if (!r.ok) return { status: "anonymous", single_user_mode: false };
+  if (!r.ok) return { status: "anonymous" };
   const body = await r.json();
-  if (body.authenticated && body.single_user_mode) {
-    return { status: "single-user", id: body.id, username: body.username, is_admin: !!body.is_admin };
-  }
   if (body.authenticated) {
-    return { status: "authenticated", id: body.id, username: body.username, is_admin: !!body.is_admin };
+    return {
+      status: "authenticated",
+      id: body.id,
+      username: body.username,
+      is_admin: !!body.is_admin,
+    };
   }
   if (body.needs_setup) {
     return { status: "needs-setup" };
   }
-  return { status: "anonymous", single_user_mode: !!body.single_user_mode };
+  return { status: "anonymous" };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {

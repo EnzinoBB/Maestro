@@ -10,6 +10,7 @@ import { DeployMetricsScreen } from "./screens/deploy-metrics";
 import { WizardScreen } from "./screens/wizard";
 import { NodesScreen } from "./screens/nodes";
 import { AdminScreen } from "./screens/admin";
+import { SettingsScreen } from "./screens/settings";
 import { LoginScreen } from "./screens/login";
 
 const qc = new QueryClient({
@@ -49,6 +50,7 @@ export default function App() {
                         <Route path="/nodes" element={<NodesScreen />} />
                         <Route path="/wizard" element={<WizardScreen />} />
                         <Route path="/admin" element={<AdminScreen />} />
+                        <Route path="/settings" element={<SettingsScreen />} />
                       </Routes>
                     </Shell>
                   </RequireAuth>

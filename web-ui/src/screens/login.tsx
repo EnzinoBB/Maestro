@@ -6,8 +6,8 @@ export function LoginScreen() {
   const { state } = useAuth();
   const nav = useNavigate();
 
-  // If already signed in (or running in single-user mode), nothing to do here.
-  if (state.status === "authenticated" || state.status === "single-user") {
+  // If already signed in, nothing to do here.
+  if (state.status === "authenticated") {
     nav("/", { replace: true });
     return null;
   }
