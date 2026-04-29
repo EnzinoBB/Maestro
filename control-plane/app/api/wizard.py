@@ -1,12 +1,13 @@
 """REST router for wizard support endpoints."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
+from ..auth.deps import require_user
 from ..wizard.docker_inspect import inspect_image
 
 
-router = APIRouter(prefix="/api/wizard")
+router = APIRouter(prefix="/api/wizard", dependencies=[Depends(require_user)])
 
 
 @router.post("/docker/inspect")

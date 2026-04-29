@@ -3,9 +3,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
+from ..auth.deps import require_user
 from ..config.cross_deploy_validator import check_cross_deploy_conflicts
 from ..config.hashing import components_hash_from_rendered
 from ..config.loader import parse_deployment, LoaderError
@@ -14,23 +15,11 @@ from ..orchestrator import Engine
 from ..storage_deploys import DeployRepository, DeployNotFound, DeployVersionNotFound
 
 
-router = APIRouter(prefix="/api/deploys")
+router = APIRouter(prefix="/api/deploys", dependencies=[Depends(require_user)])
 
 
 def _repo(request: Request) -> DeployRepository:
     return request.app.state.deploy_repo
-
-
-def _current_user_id(request: Request) -> str:
-    """Read the current user from request.state (populated by
-    CurrentUserMiddleware). Raises 401 if no session is active —
-    in single-user mode the middleware always fills it with
-    'singleuser' so this never fires.
-    """
-    uid = getattr(request.state, "user_id", None)
-    if not uid:
-        raise HTTPException(status_code=401, detail="authentication required")
-    return uid
 
 
 async def _read_apply_body(request: Request) -> tuple[str, dict[str, str], dict[str, str]]:
@@ -66,14 +55,13 @@ async def _read_apply_body(request: Request) -> tuple[str, dict[str, str], dict[
 # ---------- CRUD ----------
 
 @router.get("")
-async def list_deploys(request: Request):
-    user = _current_user_id(request)
-    return {"deploys": await _repo(request).list_for_owner(user)}
+async def list_deploys(request: Request, uid: str = Depends(require_user)):
+    return {"deploys": await _repo(request).list_for_owner(uid)}
 
 
 @router.post("", status_code=201)
-async def create_deploy(request: Request):
-    user = _current_user_id(request)
+async def create_deploy(request: Request, uid: str = Depends(require_user)):
+    user = uid
     body = {}
     raw = await request.body()
     if raw:
@@ -155,8 +143,8 @@ async def diff_on_deploy(request: Request, deploy_id: str):
 
 
 @router.post("/{deploy_id}/apply")
-async def apply_on_deploy(request: Request, deploy_id: str):
-    user = _current_user_id(request)
+async def apply_on_deploy(request: Request, deploy_id: str, uid: str = Depends(require_user)):
+    user = uid
     repo = _repo(request)
     try:
         await repo.get(deploy_id)
@@ -219,8 +207,8 @@ async def apply_on_deploy(request: Request, deploy_id: str):
 
 
 @router.post("/{deploy_id}/rollback/{version_n}")
-async def rollback_to_version(request: Request, deploy_id: str, version_n: int):
-    user = _current_user_id(request)
+async def rollback_to_version(request: Request, deploy_id: str, version_n: int, uid: str = Depends(require_user)):
+    user = uid
     repo = _repo(request)
     try:
         target = await repo.get_version(deploy_id, version_n)
