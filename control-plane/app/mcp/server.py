@@ -49,6 +49,21 @@ def _schema_logs() -> dict:
     }, "required": ["component_id"]}
 
 
+def _schema_apply_config() -> dict:
+    return {"type": "object", "properties": {
+        "yaml_text": {"type": "string"},
+        "dry_run": {"type": "boolean", "default": False},
+        "template_store": {
+            "type": "object",
+            "additionalProperties": {"type": "string"},
+        },
+        "files_store": {
+            "type": "object",
+            "additionalProperties": {"type": "string"},
+        },
+    }, "required": ["yaml_text"]}
+
+
 class MCPClient:
     def __init__(self, base: str):
         self.base = base.rstrip("/")
@@ -97,11 +112,15 @@ async def run(base_url: str):
              inputSchema={"type": "object", "properties": {}}),
         Tool(name="validate_config", description="Validate YAML config (schema + semantics).",
              inputSchema=_schema_yaml_only()),
-        Tool(name="apply_config", description="Apply YAML config; set dry_run=true for no-op preview.",
-             inputSchema={"type": "object", "properties": {
-                 "yaml_text": {"type": "string"},
-                 "dry_run": {"type": "boolean", "default": False},
-             }, "required": ["yaml_text"]}),
+        Tool(name="apply_config",
+             description=(
+                 "Apply YAML config; set dry_run=true for no-op preview. "
+                 "files_store/template_store are optional dicts mapping the "
+                 "source key referenced by config.files / config.templates "
+                 "in the YAML to the in-band content (templates: raw text; "
+                 "files: base64-encoded tar bytes)."
+             ),
+             inputSchema=_schema_apply_config()),
         Tool(name="deploy", description="Deploy the current config (optionally a single component).",
              inputSchema={"type": "object", "properties": {
                  "component_id": {"type": "string"},
@@ -132,10 +151,25 @@ async def run(base_url: str):
                 data = await client._post_yaml("/api/config/validate", arguments["yaml_text"])
             elif name == "apply_config":
                 dry = bool(arguments.get("dry_run", False))
-                data = await client._post_yaml(
-                    "/api/config/apply", arguments["yaml_text"],
-                    params={"dry_run": str(dry).lower()},
-                )
+                ts = arguments.get("template_store") or {}
+                fs = arguments.get("files_store") or {}
+                if ts or fs:
+                    # JSON body carries inline template/file content alongside
+                    # the YAML; the text/yaml path can only carry the YAML.
+                    body = {
+                        "yaml_text": arguments["yaml_text"],
+                        "template_store": ts,
+                        "files_store": fs,
+                    }
+                    data = await client._post(
+                        "/api/config/apply", json_body=body,
+                        params={"dry_run": str(dry).lower()},
+                    )
+                else:
+                    data = await client._post_yaml(
+                        "/api/config/apply", arguments["yaml_text"],
+                        params={"dry_run": str(dry).lower()},
+                    )
             elif name == "deploy":
                 body = {k: v for k, v in arguments.items() if v}
                 data = await client._post("/api/deploy", json_body=body)
