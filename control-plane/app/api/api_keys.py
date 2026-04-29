@@ -39,7 +39,9 @@ async def _read_json(request: Request) -> dict[str, Any]:
 async def _audit(request: Request, kind: str, scope_id: str, payload: dict) -> None:
     """Append an audit row to metric_events. Storage.path is the DB path
     (verified at app/storage.py:131)."""
-    import aiosqlite, time as _t, json as _json
+    import aiosqlite
+    import time as _t
+    import json as _json
     db_path = request.app.state.storage.path
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
