@@ -39,7 +39,7 @@ export function Shell({ children }: { children: ReactNode }) {
   const loc = useLocation();
   const hosts = useHosts();
   const { state: auth } = useAuth();
-  const isAdmin = auth.status === "single-user" || (auth.status === "authenticated" && auth.is_admin);
+  const isAdmin = auth.status === "authenticated" && auth.is_admin;
   const nav = isAdmin ? [...BASE_NAV, ADMIN_NAV] : BASE_NAV;
   const onlineCount = hosts.data?.hosts.filter(h => h.online).length ?? 0;
   const totalHosts = hosts.data?.hosts.length ?? 0;
