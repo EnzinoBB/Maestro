@@ -116,7 +116,7 @@ export function AdminScreen() {
           </div>
         )}
         {users.data && (
-          <div className="cp-card">
+          <div className="cp-card" style={{ overflow: "visible" }}>
             <table className="cp-table">
               <thead>
                 <tr>

@@ -77,7 +77,7 @@ function NodeCard({ node, isAdmin }: { node: Node; isAdmin: boolean }) {
   const [pivotOpen, setPivotOpen] = useState(false);
   const [labelOpen, setLabelOpen] = useState(false);
   return (
-    <div className="cp-card" style={{ padding: 14, position: "relative" }}>
+    <div className="cp-card" style={{ padding: 14, position: "relative", overflow: "visible" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <StatusDot status={node.online ? "online" : "offline"} size={8} />
         <strong style={{ fontSize: 14 }}>{display}</strong>
