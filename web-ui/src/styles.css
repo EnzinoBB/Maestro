@@ -554,3 +554,31 @@ a { color: inherit; text-decoration: none; }
 }
 .cp-yaml-diff__view { background: var(--bg-1); max-height: 70vh; overflow: auto; }
 .cp-yaml-diff__view .cm-mergeView { height: 100%; }
+
+/* ---- M4.5: ConfirmApplyDialog ---- */
+.cp-modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: grid; place-items: center;
+  z-index: 1000;
+}
+.cp-modal {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px 20px;
+  min-width: 360px;
+  max-width: 520px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.cp-modal__list { list-style: none; padding: 0; margin: 0 0 12px 0; display: flex; gap: 16px; }
+.cp-modal__warn {
+  background: color-mix(in oklch, var(--warn) 15%, transparent);
+  border: 1px solid color-mix(in oklch, var(--warn) 35%, transparent);
+  color: color-mix(in oklch, var(--warn) 85%, var(--fg));
+  padding: 8px 10px;
+  border-radius: 6px;
+  margin-bottom: 14px;
+  font-size: 12px;
+}
+.cp-modal__actions { display: flex; gap: 8px; justify-content: flex-end; }
