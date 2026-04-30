@@ -528,17 +528,20 @@ a { color: inherit; text-decoration: none; }
   word-break: break-all;
 }
 
-/* ---- M4.5: Configuration tab — CodeMirror wrappers ---- */
+/* ---- M4.5: Configuration tab — CodeMirror wrappers ----
+   The wrapper needs a definite height so CodeMirror's internal
+   .cm-scroller can compute overflow and show a scrollbar. min/max-height
+   alone is content-determined and content gets clipped. */
 .cp-yaml-editor {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg-1);
-  min-height: 300px;
-  max-height: 70vh;
+  height: 60vh;
   overflow: hidden;
 }
 .cp-yaml-editor .cm-editor { height: 100%; }
 .cp-yaml-editor .cm-editor.cm-focused { outline: none; }
+.cp-yaml-editor .cm-scroller { overflow: auto; }
 
 .cp-yaml-diff {
   border: 1px solid var(--border);
@@ -552,8 +555,10 @@ a { color: inherit; text-decoration: none; }
   padding: 6px 10px;
   border-bottom: 1px solid var(--border);
 }
-.cp-yaml-diff__view { background: var(--bg-1); max-height: 70vh; overflow: auto; }
+.cp-yaml-diff__view { background: var(--bg-1); height: 60vh; overflow: hidden; }
 .cp-yaml-diff__view .cm-mergeView { height: 100%; }
+.cp-yaml-diff__view .cm-mergeView .cm-editor { height: 100%; }
+.cp-yaml-diff__view .cm-mergeView .cm-scroller { overflow: auto; }
 
 /* ---- M4.5: ConfirmApplyDialog ---- */
 .cp-modal-backdrop {
