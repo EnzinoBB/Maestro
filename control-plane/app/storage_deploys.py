@@ -167,10 +167,22 @@ class DeployRepository:
 # in one round-trip. LEFT (not INNER) to tolerate a stale FK should one ever
 # slip past the schema constraint — UI can render `null` as "—" rather than
 # the row vanishing.
+#
+# Also LEFT JOIN deploy_versions on (deploy.id, current_version) to project
+# a `latest_version` summary on every list/get response. Without this the UI
+# cannot tell "healthy" from "failed" without an N+1 fetch per deploy. We
+# return the small projection here (no yaml_text, no components_hash) and
+# keep the full version list under /api/deploys/{id}.versions.
 _DEPLOY_SELECT = (
     "SELECT d.id, d.name, d.owner_user_id, d.current_version, d.state_summary, "
-    "d.created_at, d.updated_at, u.username "
-    "FROM deploys d LEFT JOIN users u ON u.id = d.owner_user_id"
+    "d.created_at, d.updated_at, u.username, "
+    "lv.version_n, lv.applied_at, lv.applied_by_user_id, lv.result_json, lv.kind, "
+    "lu.username "
+    "FROM deploys d "
+    "LEFT JOIN users u ON u.id = d.owner_user_id "
+    "LEFT JOIN deploy_versions lv "
+    "       ON lv.deploy_id = d.id AND lv.version_n = d.current_version "
+    "LEFT JOIN users lu ON lu.id = lv.applied_by_user_id"
 )
 
 _VERSION_SELECT = (
@@ -181,6 +193,17 @@ _VERSION_SELECT = (
 
 
 def _row_to_deploy(row) -> dict[str, Any]:
+    latest_version_n = row[8]
+    latest_version = None
+    if latest_version_n is not None:
+        latest_version = {
+            "version_n": latest_version_n,
+            "applied_at": row[9],
+            "applied_by_user_id": row[10],
+            "result_json": json.loads(row[11]) if row[11] else None,
+            "kind": row[12],
+            "applied_by_username": row[13],
+        }
     return {
         "id": row[0],
         "name": row[1],
@@ -190,6 +213,7 @@ def _row_to_deploy(row) -> dict[str, Any]:
         "created_at": row[5],
         "updated_at": row[6],
         "owner_username": row[7],
+        "latest_version": latest_version,
     }
 
 
