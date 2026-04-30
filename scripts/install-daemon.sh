@@ -14,6 +14,11 @@
 #                        If omitted, uses DEFAULT_CP_URL baked into the script.
 #   --host-id <id>       Identifier for this host (default: `hostname -s`)
 #   --token <token>      Shared daemon token (required for install)
+#   --claim <user_id>    Optional. Claim the resulting node row for this
+#                        Maestro user (instead of the default first admin).
+#                        The Control Plane's /api/daemon-enroll endpoint
+#                        embeds this value in the install snippet it
+#                        generates for the operator currently signed in.
 #   --version <tag>      Pin binary version; default: fetch from CP, fallback to GitHub latest
 #   --from-github        Force GitHub as binary source
 #   --insecure           Accept self-signed TLS / http CP (sets daemon insecure flag)
@@ -34,6 +39,7 @@ GITHUB_RELEASE_FMT="https://github.com/EnzinoBB/Maestro/releases/download/%s"
 CP_URL=""
 HOST_ID=""
 TOKEN=""
+CLAIM=""
 VERSION=""
 FROM_GITHUB=""
 INSECURE=""
@@ -63,6 +69,7 @@ while [[ $# -gt 0 ]]; do
     --cp-url)      CP_URL="$2"; CP_URL_GIVEN="1"; shift 2;;
     --host-id)     HOST_ID="$2"; HOST_ID_GIVEN="1"; shift 2;;
     --token)       TOKEN="$2"; TOKEN_GIVEN="1"; shift 2;;
+    --claim)       CLAIM="$2"; shift 2;;
     --version)     VERSION="$2"; shift 2;;
     --from-github) FROM_GITHUB="1"; shift;;
     --insecure)    INSECURE="1"; INSECURE_GIVEN="1"; shift;;
@@ -169,6 +176,13 @@ write_config() {
   local ws_endpoint="${CP_URL%/}/ws/daemon"
   ws_endpoint="${ws_endpoint/#http:\/\//ws://}"
   ws_endpoint="${ws_endpoint/#https:\/\//wss://}"
+  # Claim ties the resulting node row to the operator who generated this
+  # install snippet (the CP /api/daemon-enroll caller). Without it the new
+  # node defaults to the first admin. Encoded as a query param on the WS URL
+  # so no daemon binary changes are needed.
+  if [[ -n "$CLAIM" ]]; then
+    ws_endpoint="${ws_endpoint}?claim=${CLAIM}"
+  fi
   cat > "$CFG_FILE" <<EOF
 host_id: ${HOST_ID}
 endpoint: ${ws_endpoint}

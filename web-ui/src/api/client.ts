@@ -109,6 +109,89 @@ export function useDeleteDeploy() {
   });
 }
 
+export type NodeUpdate = {
+  node_type?: "user" | "shared";
+  owner_user_id?: string | null;
+  owner_org_id?: string | null;
+  label?: string | null;
+};
+
+export function useUpdateNode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: NodeUpdate }) => {
+      const r = await fetch(`/api/nodes/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+        credentials: "same-origin",
+      });
+      if (!r.ok) {
+        const text = await r.text();
+        throw new Error(`update failed (${r.status}): ${text}`);
+      }
+      return r.json() as Promise<Node>;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["nodes"] }),
+  });
+}
+
+export function useUpdateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: { is_admin?: boolean } }) => {
+      const r = await fetch(`/api/admin/users/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(patch),
+        credentials: "same-origin",
+      });
+      if (!r.ok) {
+        const text = await r.text();
+        throw new Error(`update failed (${r.status}): ${text}`);
+      }
+      return r.json();
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "users"] }),
+  });
+}
+
+export type DeleteUserError = {
+  status: number;
+  code?: string;
+  message: string;
+  deploys?: number;
+  nodes?: number;
+};
+
+export function useDeleteUser() {
+  const qc = useQueryClient();
+  return useMutation<void, DeleteUserError, string>({
+    mutationFn: async (id: string) => {
+      const r = await fetch(`/api/admin/users/${id}`, {
+        method: "DELETE",
+        credentials: "same-origin",
+      });
+      if (r.status === 204) return;
+      let body: unknown = null;
+      try { body = await r.json(); } catch { /* not json */ }
+      const detail = (body as { detail?: unknown } | null)?.detail;
+      if (detail && typeof detail === "object" && "code" in detail) {
+        const d = detail as { code?: string; message?: string; deploys?: number; nodes?: number };
+        throw {
+          status: r.status, code: d.code, message: d.message ?? "delete failed",
+          deploys: d.deploys, nodes: d.nodes,
+        } satisfies DeleteUserError;
+      }
+      throw {
+        status: r.status,
+        message: typeof detail === "string" ? detail : `delete failed (${r.status})`,
+      } satisfies DeleteUserError;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "users"] }),
+  });
+}
+
 export function useRollback() {
   const qc = useQueryClient();
   return useMutation({

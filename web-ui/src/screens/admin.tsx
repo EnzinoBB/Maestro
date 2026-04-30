@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Mono, Badge, Pill, Icons, relTime } from "../primitives";
 import { PasswordStrength } from "../components/PasswordStrength";
 import { copyText } from "../lib/clipboard";
+import { useUpdateUser, useDeleteUser, type DeleteUserError } from "../api/client";
 
 type AdminUser = {
   id: string;
@@ -38,6 +39,8 @@ export function AdminScreen() {
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [resetFor, setResetFor] = useState<AdminUser | null>(null);
+  const [deleteFor, setDeleteFor] = useState<AdminUser | null>(null);
+  const updateUser = useUpdateUser();
 
   const onUserCreated = (id: string) => {
     setAddOpen(false);
@@ -161,13 +164,30 @@ export function AdminScreen() {
                                   style={{ position: "fixed", inset: 0, zIndex: 30 }} />
                                 <div className="cp-popover" style={{
                                   position: "absolute", right: 0, top: 28,
-                                  zIndex: 31, minWidth: 180, padding: 4,
+                                  zIndex: 31, minWidth: 200, padding: 4,
                                 }}>
                                   <button type="button" className="cp-btn cp-btn--ghost"
                                     style={{ width: "100%", justifyContent: "flex-start", padding: "6px 10px", gap: 8 }}
                                     onClick={() => { setResetFor(u); setMenuFor(null); }}>
                                     <Icons.rotate size={12} />
                                     <span>Reset password</span>
+                                  </button>
+                                  <button type="button" className="cp-btn cp-btn--ghost"
+                                    style={{ width: "100%", justifyContent: "flex-start", padding: "6px 10px", gap: 8 }}
+                                    disabled={updateUser.isPending}
+                                    onClick={() => {
+                                      updateUser.mutate({ id: u.id, patch: { is_admin: !u.is_admin } });
+                                      setMenuFor(null);
+                                    }}>
+                                    <Icons.user size={12} />
+                                    <span>{u.is_admin ? "Demote to member" : "Promote to admin"}</span>
+                                  </button>
+                                  <div style={{ height: 1, background: "var(--border)", margin: "4px 6px" }} />
+                                  <button type="button" className="cp-btn cp-btn--ghost cp-btn--danger"
+                                    style={{ width: "100%", justifyContent: "flex-start", padding: "6px 10px", gap: 8 }}
+                                    onClick={() => { setDeleteFor(u); setMenuFor(null); }}>
+                                    <Icons.x size={12} />
+                                    <span>Delete user</span>
                                   </button>
                                 </div>
                               </>
@@ -245,7 +265,77 @@ export function AdminScreen() {
       </section>
 
       {resetFor && <ResetPasswordModal user={resetFor} onClose={() => setResetFor(null)} />}
+      {deleteFor && <DeleteUserModal user={deleteFor} onClose={() => setDeleteFor(null)} />}
     </div>
+  );
+}
+
+function DeleteUserModal({ user, onClose }: { user: AdminUser; onClose: () => void }) {
+  const del = useDeleteUser();
+  const [err, setErr] = useState<DeleteUserError | null>(null);
+  const submit = () => {
+    setErr(null);
+    del.mutate(user.id, {
+      onSuccess: onClose,
+      onError: e => setErr(e),
+    });
+  };
+  return (
+    <>
+      <div className="cp-drawer-backdrop" onClick={onClose} />
+      <div className="cp-modal" style={{ zIndex: 70, width: 460 }}>
+        <div className="cp-drawer__header">
+          <Icons.x size={14} />
+          <div className="grow">
+            <strong>Delete user</strong>{" "}
+            <Mono dim style={{ marginLeft: 8, fontSize: 11 }}>@{user.username}</Mono>
+          </div>
+          <button type="button" className="cp-btn cp-btn--ghost" onClick={onClose}>
+            <Icons.x size={14} />
+          </button>
+        </div>
+        <div style={{ padding: 16 }}>
+          <p style={{ fontSize: 13, lineHeight: 1.55, margin: "0 0 12px" }}>
+            Permanently delete <Mono>@{user.username}</Mono>?
+          </p>
+          <p className="small dim" style={{ margin: 0, lineHeight: 1.55 }}>
+            Their API keys, org memberships, and node access are revoked.
+            Audit history (which versions they applied) is preserved by
+            re-attributing those entries to the system row.
+          </p>
+          {err?.code === "user_has_dependencies" && (
+            <div className="small mono" style={{
+              marginTop: 12, padding: 10,
+              background: "color-mix(in oklch, var(--err) 8%, transparent)",
+              border: "1px solid color-mix(in oklch, var(--err) 35%, var(--border))",
+              borderRadius: 4, color: "var(--err)",
+            }}>
+              {err.message}
+              <div style={{ marginTop: 6 }}>
+                Reassign or delete those first, then retry.
+              </div>
+            </div>
+          )}
+          {err && err.code !== "user_has_dependencies" && (
+            <div className="small mono" style={{
+              marginTop: 12, color: "var(--err)",
+            }}>
+              {err.message}
+            </div>
+          )}
+          <div className="hstack" style={{ justifyContent: "flex-end", gap: 8, marginTop: 16 }}>
+            <button type="button" className="cp-btn" onClick={onClose} disabled={del.isPending}>
+              Cancel
+            </button>
+            <button type="button" className="cp-btn cp-btn--danger"
+              disabled={del.isPending} onClick={submit}>
+              <Icons.x size={12} />
+              <span>{del.isPending ? "Deleting…" : "Delete user"}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 

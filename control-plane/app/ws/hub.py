@@ -37,6 +37,11 @@ class DaemonConnection:
     components_known: list[dict] = field(default_factory=list)
     connected_at: float = field(default_factory=time.time)
     system: dict = field(default_factory=dict)
+    # Optional claim sent at connect time; the auto-register handler uses
+    # this as the owner_user_id when creating a fresh `node` row, so a
+    # daemon enrolled by a non-admin operator becomes their personal node
+    # rather than defaulting to the first admin.
+    claim_user_id: str | None = None
     _pending: dict[str, asyncio.Future] = field(default_factory=dict)
     _send_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     _closed: bool = False
@@ -191,6 +196,7 @@ class Hub:
     async def handle_daemon_ws(
         self, websocket: WebSocket, host_id: str, token: str | None,
         *, expected_token: str | None = None, heartbeat_interval: int = 15,
+        claim_user_id: str | None = None,
     ) -> None:
         if expected_token is not None and token != expected_token:
             await websocket.close(code=4401)
@@ -225,6 +231,7 @@ class Hub:
             runners=list(ack.payload.get("runners_available", [])),
             components_known=list(ack.payload.get("components_known", [])),
             system=dict(ack.payload.get("system", {})),
+            claim_user_id=claim_user_id,
         )
         await self.register(conn)
 

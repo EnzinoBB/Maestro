@@ -9,6 +9,7 @@ type EnrollPayload = {
   token: string;
   install_url: string;
   token_available: boolean;
+  claim_user_id?: string;
 };
 
 type Node = {
@@ -21,7 +22,7 @@ type Node = {
 };
 
 async function fetchEnroll(): Promise<EnrollPayload> {
-  const r = await fetch("/api/admin/daemon-enroll", { credentials: "same-origin" });
+  const r = await fetch("/api/daemon-enroll", { credentials: "same-origin" });
   if (!r.ok) throw new Error(`enroll fetch failed: ${r.status}`);
   return r.json();
 }
@@ -386,6 +387,10 @@ function buildCommand(p: EnrollPayload, hostId: string): string {
   if (hostId.trim()) {
     lines[lines.length - 1] += " \\";
     lines.push(`      --host-id ${hostId.trim()}`);
+  }
+  if (p.claim_user_id) {
+    lines[lines.length - 1] += " \\";
+    lines.push(`      --claim ${p.claim_user_id}`);
   }
   return lines.join("\n");
 }
