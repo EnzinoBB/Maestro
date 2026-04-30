@@ -1,18 +1,7 @@
 import { Link, useParams } from "react-router-dom";
 import { useDeploy, useRollback, deployHealth, useHostCpuSeries } from "../api/client";
 import { Pill, Mono, relTime, Icons, StatusDot, Sparkline } from "../primitives";
-
-function extractHostIds(yaml: string): string[] {
-  const m = yaml.match(/\bhosts:\s*\n((?:[ \t]+\S.*\n?)+)/);
-  if (!m) return [];
-  const block = m[1];
-  const ids: string[] = [];
-  for (const line of block.split("\n")) {
-    const match = line.match(/^[ \t]+([A-Za-z0-9_.-]+)\s*:/);
-    if (match) ids.push(match[1]);
-  }
-  return Array.from(new Set(ids));
-}
+import { parseDeployYaml } from "../lib/yamlparse";
 
 export function DeployDetailScreen() {
   const { id } = useParams<{ id: string }>();
@@ -25,7 +14,10 @@ export function DeployDetailScreen() {
 
   const health = deployHealth(data);
   const currentVersion = data.versions.find(v => v.version_n === data.current_version);
-  const hostIds = currentVersion ? extractHostIds(currentVersion.yaml_text) : [];
+  const parsed = currentVersion
+    ? parseDeployYaml(currentVersion.yaml_text)
+    : { hosts: [], components: [] };
+  const hostIds = parsed.hosts;
 
   return (
     <div>
