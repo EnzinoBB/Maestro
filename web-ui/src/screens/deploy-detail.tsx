@@ -1,12 +1,28 @@
-import { Link, useParams } from "react-router-dom";
-import { useDeploy, useRollback, deployHealth, useHostCpuSeries } from "../api/client";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import {
+  useDeploy,
+  useRollback,
+  deployHealth,
+  useHostCpuSeries,
+  type DeployWithVersions,
+} from "../api/client";
 import { Pill, Mono, relTime, Icons, StatusDot, Sparkline } from "../primitives";
-import { parseDeployYaml } from "../lib/yamlparse";
+import { parseDeployYaml, type ParsedDeployment } from "../lib/yamlparse";
+
+type TabKey = "versions" | "components" | "configuration";
 
 export function DeployDetailScreen() {
   const { id } = useParams<{ id: string }>();
   const { data, isLoading, error } = useDeploy(id);
   const rollback = useRollback();
+  const [search, setSearch] = useSearchParams();
+  const tab = (search.get("tab") as TabKey) || "versions";
+  const setTab = (t: TabKey) => {
+    const next = new URLSearchParams(search);
+    if (t === "versions") next.delete("tab");
+    else next.set("tab", t);
+    setSearch(next, { replace: true });
+  };
 
   if (isLoading) return <div className="cp-page"><div className="cp-skel" style={{ height: 120 }} /></div>;
   if (error) return <div className="cp-page"><div className="cp-empty"><h2>Error</h2><p className="mono">{String(error)}</p></div></div>;
@@ -14,7 +30,7 @@ export function DeployDetailScreen() {
 
   const health = deployHealth(data);
   const currentVersion = data.versions.find(v => v.version_n === data.current_version);
-  const parsed = currentVersion
+  const parsed: ParsedDeployment = currentVersion
     ? parseDeployYaml(currentVersion.yaml_text)
     : { hosts: [], components: [] };
   const hostIds = parsed.hosts;
@@ -39,71 +55,99 @@ export function DeployDetailScreen() {
       </div>
 
       <div className="cp-tabs">
-        <span className="cp-tab active">Versions</span>
-        <span className="cp-tab">Components <span className="dim small">(M2.6)</span></span>
-        <span className="cp-tab">Configuration <span className="dim small">(soon)</span></span>
+        <button
+          type="button"
+          className={`cp-tab${tab === "versions" ? " active" : ""}`}
+          onClick={() => setTab("versions")}
+        >
+          Versions
+        </button>
+        <button
+          type="button"
+          className={`cp-tab${tab === "components" ? " active" : ""}`}
+          onClick={() => setTab("components")}
+        >
+          Components
+        </button>
+        <button
+          type="button"
+          className={`cp-tab${tab === "configuration" ? " active" : ""}`}
+          onClick={() => setTab("configuration")}
+        >
+          Configuration
+        </button>
         <Link to={`/deploys/${id}/metrics`} className="cp-tab">Metrics</Link>
       </div>
 
-      <div className="cp-page">
-        {hostIds.length > 0 && (
-          <section style={{ marginBottom: 24 }}>
-            <div className="cp-section-title" style={{ marginBottom: 10 }}>
-              Hosts ({hostIds.length}) — host CPU over last 15 minutes
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
-              {hostIds.map(h => <HostMetricsCard key={h} hostId={h} />)}
-            </div>
-          </section>
-        )}
+      {tab === "versions" && (
+        <div className="cp-page">
+          {hostIds.length > 0 && (
+            <section style={{ marginBottom: 24 }}>
+              <div className="cp-section-title" style={{ marginBottom: 10 }}>
+                Hosts ({hostIds.length}) — host CPU over last 15 minutes
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+                {hostIds.map(h => <HostMetricsCard key={h} hostId={h} />)}
+              </div>
+            </section>
+          )}
 
-        {data.versions.length === 0 ? (
-          <div className="cp-empty">
-            <h2>No versions yet</h2>
-            <p>This deploy has no applied versions. Use the Wizard or POST to <Mono>/api/deploys/{data.id}/apply</Mono>.</p>
-          </div>
-        ) : (
-          <ol className="cp-timeline" style={{ listStyle: "none", paddingLeft: 20 }}>
-            {[...data.versions].reverse().map(v => {
-              const isCurrent = v.version_n === data.current_version;
-              const ok = v.result_json?.ok;
-              const status: "success" | "failed" | "in-progress" =
-                ok === true ? "success" : ok === false ? "failed" : "in-progress";
-              return (
-                <li key={v.id} className="cp-timeline__item">
-                  <span className="cp-timeline__dot" style={{ borderColor: isCurrent ? "var(--accent)" : undefined }} />
-                  <div style={{ display: "flex", gap: 14, alignItems: "baseline", flexWrap: "wrap" }}>
-                    <Mono style={{ fontSize: 13, fontWeight: 600 }}>v{v.version_n}</Mono>
-                    <Pill status={status}>{ok === true ? "Success" : ok === false ? "Failed" : "Unknown"}</Pill>
-                    {v.kind === "rollback" && <span className="cp-badge"><Icons.rotate size={10} /> rollback</span>}
-                    {isCurrent && <span className="cp-badge" style={{ color: "var(--accent)", borderColor: "var(--accent)" }}>current</span>}
-                    <span className="small dim">{relTime(v.applied_at)}</span>
-                    <span className="small dim mono" title={v.applied_by_user_id}>
-                      by {v.applied_by_username ? `@${v.applied_by_username}` : v.applied_by_user_id}
-                    </span>
-                    {!isCurrent && (
-                      <button
-                        type="button"
-                        className="cp-btn cp-btn--sm"
-                        onClick={() => id && rollback.mutate({ deployId: id, versionN: v.version_n })}
-                        disabled={rollback.isPending}
-                      >
-                        <Icons.rotate size={11} />
-                        <span>Rollback here</span>
-                      </button>
-                    )}
-                  </div>
-                  {v.result_json?.error && (
-                    <div className="small mono" style={{ color: "var(--err)", marginTop: 4 }}>
-                      {v.result_json.error}
+          {data.versions.length === 0 ? (
+            <div className="cp-empty">
+              <h2>No versions yet</h2>
+              <p>This deploy has no applied versions. Use the Wizard or POST to <Mono>/api/deploys/{data.id}/apply</Mono>.</p>
+            </div>
+          ) : (
+            <ol className="cp-timeline" style={{ listStyle: "none", paddingLeft: 20 }}>
+              {[...data.versions].reverse().map(v => {
+                const isCurrent = v.version_n === data.current_version;
+                const ok = v.result_json?.ok;
+                const status: "success" | "failed" | "in-progress" =
+                  ok === true ? "success" : ok === false ? "failed" : "in-progress";
+                return (
+                  <li key={v.id} className="cp-timeline__item">
+                    <span className="cp-timeline__dot" style={{ borderColor: isCurrent ? "var(--accent)" : undefined }} />
+                    <div style={{ display: "flex", gap: 14, alignItems: "baseline", flexWrap: "wrap" }}>
+                      <Mono style={{ fontSize: 13, fontWeight: 600 }}>v{v.version_n}</Mono>
+                      <Pill status={status}>{ok === true ? "Success" : ok === false ? "Failed" : "Unknown"}</Pill>
+                      {v.kind === "rollback" && <span className="cp-badge"><Icons.rotate size={10} /> rollback</span>}
+                      {isCurrent && <span className="cp-badge" style={{ color: "var(--accent)", borderColor: "var(--accent)" }}>current</span>}
+                      <span className="small dim">{relTime(v.applied_at)}</span>
+                      <span className="small dim mono" title={v.applied_by_user_id}>
+                        by {v.applied_by_username ? `@${v.applied_by_username}` : v.applied_by_user_id}
+                      </span>
+                      {!isCurrent && (
+                        <button
+                          type="button"
+                          className="cp-btn cp-btn--sm"
+                          onClick={() => id && rollback.mutate({ deployId: id, versionN: v.version_n })}
+                          disabled={rollback.isPending}
+                        >
+                          <Icons.rotate size={11} />
+                          <span>Rollback here</span>
+                        </button>
+                      )}
                     </div>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        )}
-      </div>
+                    {v.result_json?.error && (
+                      <div className="small mono" style={{ color: "var(--err)", marginTop: 4 }}>
+                        {v.result_json.error}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+      )}
+
+      {tab === "components" && id && (
+        <ComponentsTab parsed={parsed} deployId={id} />
+      )}
+
+      {tab === "configuration" && id && (
+        <ConfigurationTab data={data} deployId={id} />
+      )}
     </div>
   );
 }
@@ -129,4 +173,12 @@ function HostMetricsCard({ hostId }: { hostId: string }) {
       )}
     </div>
   );
+}
+
+function ComponentsTab(_p: { parsed: ParsedDeployment; deployId: string }) {
+  return <div className="cp-page"><div className="cp-empty"><p>Components — wiring up…</p></div></div>;
+}
+
+function ConfigurationTab(_p: { data: DeployWithVersions; deployId: string }) {
+  return <div className="cp-page"><div className="cp-empty"><p>Configuration — wiring up…</p></div></div>;
 }
