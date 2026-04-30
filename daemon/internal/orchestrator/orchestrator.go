@@ -473,8 +473,11 @@ func (o *Orchestrator) PublishMetrics(ctx context.Context, client *ws.Client) er
 
 	// Per-component healthcheck liveness: 1 if last hc OK, 0 if failed,
 	// omitted entirely if no healthcheck has run yet. Also build a
-	// name→id map for the docker stats collector (container naming
-	// convention is "maestro-<component_id>").
+	// name→id map for the docker stats collector. The runner records the
+	// actual container name (which may be set by the YAML's
+	// run.container_name and otherwise falls back to "maestro-<id>") into
+	// state.Component.ContainerName at deploy time — use that as the
+	// truth so per-component metrics flow regardless of YAML shape.
 	nameToCid := map[string]string{}
 	for _, c := range comps {
 		if c.LastHCAt != nil {
@@ -489,7 +492,9 @@ func (o *Orchestrator) PublishMetrics(ctx context.Context, client *ws.Client) er
 				"value":    v,
 			})
 		}
-		nameToCid["maestro-"+c.ID] = c.ID
+	}
+	for k, v := range componentMetricsNameMap(comps) {
+		nameToCid[k] = v
 	}
 
 	// Per-container CPU + RAM (best-effort; returns nil if docker
@@ -534,4 +539,22 @@ func (o *Orchestrator) PublishMetrics(ctx context.Context, client *ws.Client) er
 		"samples": samples,
 	}
 	return client.SendEvent(ws.TypeEventMetrics, payload)
+}
+
+// componentMetricsNameMap returns a docker-container-name → component_id
+// map for use with metrics.CollectDocker / metrics.CollectLogRates. Uses the
+// runner-recorded ContainerName when present (which honours
+// run.container_name from the YAML), and falls back to the conventional
+// "maestro-<id>" for components whose state pre-dates the container_name
+// column or whose runner is something other than docker.
+func componentMetricsNameMap(comps []*state.Component) map[string]string {
+	out := map[string]string{}
+	for _, c := range comps {
+		name := c.ContainerName
+		if name == "" {
+			name = "maestro-" + c.ID
+		}
+		out[name] = c.ID
+	}
+	return out
 }

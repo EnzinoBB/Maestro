@@ -1,30 +1,7 @@
 import { Link, useParams } from "react-router-dom";
 import { useDeploy, useMetricRange, useComponentMetric } from "../api/client";
 import { AreaChart, Mono } from "../primitives";
-
-function extractHostIds(yaml: string): string[] {
-  const m = yaml.match(/\bhosts:\s*\n((?:[ \t]+\S.*\n?)+)/);
-  if (!m) return [];
-  const ids: string[] = [];
-  for (const line of m[1].split("\n")) {
-    const match = line.match(/^[ \t]+([A-Za-z0-9_.-]+)\s*:/);
-    if (match) ids.push(match[1]);
-  }
-  return Array.from(new Set(ids));
-}
-
-function extractComponentIds(yaml: string): string[] {
-  // Match `components:` block, stop at the next top-level key.
-  const m = yaml.match(/\bcomponents:\s*\n([\s\S]*?)(?=\ndeployment:|\n[a-z]|\n$|$)/);
-  if (!m) return [];
-  const ids: string[] = [];
-  for (const line of m[1].split("\n")) {
-    // Only top-level children of components: single indent level.
-    const match = line.match(/^(?:  |\t)([A-Za-z0-9_.-]+)\s*:/);
-    if (match) ids.push(match[1]);
-  }
-  return Array.from(new Set(ids));
-}
+import { parseDeployYaml } from "../lib/yamlparse";
 
 export function DeployMetricsScreen() {
   const { id } = useParams<{ id: string }>();
@@ -33,8 +10,11 @@ export function DeployMetricsScreen() {
   if (isLoading) return <div className="cp-page"><div className="cp-skel" style={{ height: 200 }} /></div>;
   if (!data) return null;
   const currentVersion = data.versions.find(v => v.version_n === data.current_version);
-  const hostIds = currentVersion ? extractHostIds(currentVersion.yaml_text) : [];
-  const compIds = currentVersion ? extractComponentIds(currentVersion.yaml_text) : [];
+  const parsed = currentVersion
+    ? parseDeployYaml(currentVersion.yaml_text)
+    : { hosts: [], components: [] };
+  const hostIds = parsed.hosts;
+  const compIds = parsed.components.map(c => c.id);
 
   return (
     <div className="cp-page">
