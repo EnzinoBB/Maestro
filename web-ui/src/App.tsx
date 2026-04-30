@@ -7,6 +7,7 @@ import { Shell } from "./shell";
 import { OverviewScreen } from "./screens/overview";
 import { DeployDetailScreen } from "./screens/deploy-detail";
 import { DeployMetricsScreen } from "./screens/deploy-metrics";
+import { ComponentLogsScreen } from "./screens/component-logs";
 import { WizardScreen } from "./screens/wizard";
 import { NodesScreen } from "./screens/nodes";
 import { AdminScreen } from "./screens/admin";
@@ -47,6 +48,7 @@ export default function App() {
                         <Route path="/deploys" element={<OverviewScreen />} />
                         <Route path="/deploys/:id" element={<DeployDetailScreen />} />
                         <Route path="/deploys/:id/metrics" element={<DeployMetricsScreen />} />
+                        <Route path="/components/:id/logs" element={<ComponentLogsScreen />} />
                         <Route path="/nodes" element={<NodesScreen />} />
                         <Route path="/wizard" element={<WizardScreen />} />
                         <Route path="/admin" element={<AdminScreen />} />

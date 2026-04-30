@@ -1,106 +1,51 @@
 # Development roadmap
 
-The project is planned in three incremental phases. Each phase produces a
-usable artifact and is documented by a dedicated file (`phase-N-*.md`)
-designed to be fed to an AI agent together with the code produced in
-previous phases, enabling iterative development with low token usage.
+The project is planned in **four** incremental phases. Each phase produces a usable artifact and is documented by a dedicated file (`phase-N-*.md`) designed to be consumed by an AI agent together with the code from previous phases, enabling iterative development with low token usage.
 
 ## Phase summary
 
-| Phase | Name | Goal | Estimated duration |
-|-------|------|------|--------------------|
-| 1 | Prototype | Working vertical slice: real deployment of a component from YAML | 1-2 weeks |
-| 2 | Beta | Complete features: Git-sync, tests, rollback, credential vault, hot deploy, full MCP | 2-3 weeks |
-| 3 | Production | Kubernetes, advanced observability, HA, CLI, packaging, user documentation | 2-3 weeks |
+| Phase | Name | Status | Goal |
+|-------|------|--------|------|
+| 1 | Prototype | **closed** | Working vertical slice: real deployment of a Docker component from YAML on real Linux hosts. |
+| 2 | Control Plane v2 | **closed** | Multi-deploy data model, telemetry stack, polymorphic deploy wizard, React SPA, multi-tenant auth, MCP API-key auth, installer Layer 1, M4.5 DeployDetail consolidation. |
+| 3 | Operational Maturity | active | Hot/blue-green/canary, automatic rollback, test framework, vault, git-sync auto-deploy, granular lifecycle primitives (artifact + self-update + remove + diagnostics), MCP completeness, RBAC enforcement, audit log, hardening, backup. |
+| 4 | Production Scale | planned | Kubernetes runner, Postgres + Alembic, HA + leader election, mTLS, OIDC, `maestro` CLI, professional packaging (.deb/.rpm + Helm), documentation site, OpenTelemetry. |
 
-## Phase 1 — Prototype
+## Phase documents
 
-**In scope:**
-- YAML schema v1 (subset), parser, and validator.
-- Go daemon with systemd and Docker runners, SQLite store, WebSocket client.
-- Python control plane with FastAPI, WebSocket hub, sequential orchestrator,
-  REST API for the UI.
-- Minimal web UI (HTMX, one page: dashboard + YAML editor + logs).
-- MCP server with the essential verbs.
-- Skill skeleton.
-- Unit tests on both sides + end-to-end integration tests that actually
-  deploy a real Docker component.
+- Phase 1: [docs/phase-1-completion.md](phase-1-completion.md) — historical record of what shipped in the prototype.
+- Phase 2: [docs/phase-2-completion.md](phase-2-completion.md) — consuntivo of the CP v2 trajectory (M1 multi-deploy, M2-M2.8 telemetry, M3-M3.5 wizard, M4 SPA, M5-M5.5 multi-tenant), plus operational artifacts (installer Layer 1, MCP API-key auth, non-admin enroll).
+- Phase 3: [docs/phase-3-operational-maturity.md](phase-3-operational-maturity.md) — active work plan.
+- Phase 4: [docs/phase-4-production-scale.md](phase-4-production-scale.md) — forward plan.
 
-**Out of scope:**
-- Kubernetes, automatic Git-sync, component test framework, advanced
-  credential vault, canary/blue-green rollouts, hot deploy.
+## Architectural reference
 
-**Deliverable**: runnable repository with `docker compose up` for the
-control plane + `maestrod` installable on a Linux host; working end-to-end
-deployment of `examples/deployment.yaml`.
+- [docs/architecture.md](architecture.md) — system architecture (three-tier CP / daemon / agent).
+- [docs/yaml-schema.md](yaml-schema.md) — YAML schema reference.
+- [docs/protocol.md](protocol.md) — daemon ↔ CP wire protocol.
+- [docs/superpowers/specs/2026-04-24-control-plane-v2-vision-design.md](superpowers/specs/2026-04-24-control-plane-v2-vision-design.md) — CP v2 vision (M1-M5 umbrella).
+- [docs/superpowers/specs/2026-04-22-installer-scripts-design.md](superpowers/specs/2026-04-22-installer-scripts-design.md) — installer scripts and enrollment design.
+- [docs/superpowers/specs/2026-04-28-mcp-api-key-auth-design.md](superpowers/specs/2026-04-28-mcp-api-key-auth-design.md) — MCP API-key auth.
 
-## Phase 2 — Beta
+## Phase transition rules
 
-**Adds:**
-- Git-sync component (webhooks + polling) with automatic trigger on commit.
-- Component test framework (pre/post deploy, unit/integration/smoke).
-- Credential vault with encrypted-file backend and pluggable interface.
-- Automatic rollback on failed tests/healthchecks.
-- Hot deploy and blue_green for components that support them.
-- Canary rollouts.
-- Rich web UI (React) with log streaming, metric charts, deployment history.
-- MCP server with all verbs.
-- Complete skill with documented decision flows.
+A phase is considered closed when:
 
-**Deliverable**: system usable daily for real multi-component projects.
+1. Every task in the phase document is resolved (or explicitly deferred to a successor phase, with the deferral recorded).
+2. Every acceptance test of the phase passes.
+3. The system starts up and serves the documented commands without manual intervention.
+4. A `phase-N-completion.md` document captures any deviation from the plan.
 
-## Phase 3 — Production
-
-**Adds:**
-- Kubernetes runner (Deployment/StatefulSet/Helm).
-- Observability: Prometheus metrics, OpenTelemetry tracing, structured
-  audit log.
-- High availability of the control plane (PostgreSQL, cluster of instances
-  with leader election).
-- mTLS between daemon ↔ control plane.
-- `maestro` CLI for terminal operations.
-- Packaging: Docker image of the control plane on a registry, .deb/.rpm
-  of the daemon, optional Helm chart.
-- Complete user documentation (install guide, tutorial, API reference).
-- Basic RBAC for UI and MCP (users, roles, permissions).
-
-**Deliverable**: product ready for installation at an organization.
-
-## Rules for transitioning between phases
-
-A phase is considered complete when:
-
-1. All tasks of the phase document are resolved.
-2. All acceptance tests of the phase pass.
-3. The system starts up and responds to the commands documented in the
-   same file.
-4. The phase documentation is updated to reflect any deviations from the
-   initial plan.
-
-If a technical choice from the plan turns out to be wrong during
-implementation, the agent has a mandate to deviate, documenting the
-deviation and the reasons in a `docs/deviations.md` file.
+If a technical choice in a plan turns out to be wrong during implementation, the agent has a mandate to deviate, recording the deviation in the relevant `phase-N-completion.md`. Phase 2 is itself an example: the plan was `phase-2-beta.md`, the trajectory shifted to the CP v2 vision, and the consuntivo is in [phase-2-completion.md](phase-2-completion.md).
 
 ## How to feed the documents to an agent
 
-For **Phase 1**: provide the agent with:
-- `README.md`
-- `docs/architecture.md`
-- `docs/yaml-schema.md`
-- `docs/protocol.md`
-- `docs/phase-1-prototype.md`
-- `examples/deployment.yaml`
-- `skill/SKILL.md`
+For Phase 3 work, provide:
+- the repository as it stands at end of Phase 2,
+- [docs/architecture.md](architecture.md),
+- [docs/yaml-schema.md](yaml-schema.md),
+- [docs/protocol.md](protocol.md),
+- [docs/phase-3-operational-maturity.md](phase-3-operational-maturity.md),
+- [docs/phase-2-completion.md](phase-2-completion.md) for context.
 
-The agent will proceed from the empty directory tree to the completion of
-Phase 1.
-
-For **Phase 2**: provide the agent with the repository as it stands at the
-end of Phase 1, plus:
-- `docs/phase-2-beta.md`
-
-For **Phase 3**: provide the repository at the end of Phase 2, plus:
-- `docs/phase-3-production.md`
-
-Each phase document is intentionally self-contained: it lists prerequisites,
-tasks, acceptance criteria, and tests to run.
+Each phase document is intentionally self-contained: it lists prerequisites, tasks, acceptance criteria, and tests to run.

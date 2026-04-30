@@ -1,23 +1,41 @@
-import { Link, useParams } from "react-router-dom";
-import { useDeploy, useRollback, deployHealth, useHostCpuSeries } from "../api/client";
+import { useState } from "react";
+import { Link, useParams, useSearchParams } from "react-router-dom";
+import {
+  useDeploy,
+  useRollback,
+  deployHealth,
+  useHostCpuSeries,
+  useDeployState,
+  useDeployValidate,
+  useDeployDiff,
+  useApplyDeploy,
+  type DeployWithVersions,
+  type ComponentState,
+  type DeployDiff,
+  type ValidateError,
+  type ValidateOk,
+} from "../api/client";
 import { Pill, Mono, relTime, Icons, StatusDot, Sparkline } from "../primitives";
+import { parseDeployYaml, type ParsedDeployment } from "../lib/yamlparse";
+import { ComponentCard } from "../components/ComponentCard";
+import { YamlEditor } from "../components/YamlEditor";
+import { YamlDiff } from "../components/YamlDiff";
+import { ConfirmApplyDialog } from "../components/ConfirmApplyDialog";
 
-function extractHostIds(yaml: string): string[] {
-  const m = yaml.match(/\bhosts:\s*\n((?:[ \t]+\S.*\n?)+)/);
-  if (!m) return [];
-  const block = m[1];
-  const ids: string[] = [];
-  for (const line of block.split("\n")) {
-    const match = line.match(/^[ \t]+([A-Za-z0-9_.-]+)\s*:/);
-    if (match) ids.push(match[1]);
-  }
-  return Array.from(new Set(ids));
-}
+type TabKey = "versions" | "components" | "configuration";
 
 export function DeployDetailScreen() {
   const { id } = useParams<{ id: string }>();
   const { data, isLoading, error } = useDeploy(id);
   const rollback = useRollback();
+  const [search, setSearch] = useSearchParams();
+  const tab = (search.get("tab") as TabKey) || "versions";
+  const setTab = (t: TabKey) => {
+    const next = new URLSearchParams(search);
+    if (t === "versions") next.delete("tab");
+    else next.set("tab", t);
+    setSearch(next, { replace: true });
+  };
 
   if (isLoading) return <div className="cp-page"><div className="cp-skel" style={{ height: 120 }} /></div>;
   if (error) return <div className="cp-page"><div className="cp-empty"><h2>Error</h2><p className="mono">{String(error)}</p></div></div>;
@@ -25,7 +43,10 @@ export function DeployDetailScreen() {
 
   const health = deployHealth(data);
   const currentVersion = data.versions.find(v => v.version_n === data.current_version);
-  const hostIds = currentVersion ? extractHostIds(currentVersion.yaml_text) : [];
+  const parsed: ParsedDeployment = currentVersion
+    ? parseDeployYaml(currentVersion.yaml_text)
+    : { hosts: [], components: [] };
+  const hostIds = parsed.hosts;
 
   return (
     <div>
@@ -47,71 +68,99 @@ export function DeployDetailScreen() {
       </div>
 
       <div className="cp-tabs">
-        <span className="cp-tab active">Versions</span>
-        <span className="cp-tab">Components <span className="dim small">(M2.6)</span></span>
-        <span className="cp-tab">Configuration <span className="dim small">(soon)</span></span>
+        <button
+          type="button"
+          className={`cp-tab${tab === "versions" ? " active" : ""}`}
+          onClick={() => setTab("versions")}
+        >
+          Versions
+        </button>
+        <button
+          type="button"
+          className={`cp-tab${tab === "components" ? " active" : ""}`}
+          onClick={() => setTab("components")}
+        >
+          Components
+        </button>
+        <button
+          type="button"
+          className={`cp-tab${tab === "configuration" ? " active" : ""}`}
+          onClick={() => setTab("configuration")}
+        >
+          Configuration
+        </button>
         <Link to={`/deploys/${id}/metrics`} className="cp-tab">Metrics</Link>
       </div>
 
-      <div className="cp-page">
-        {hostIds.length > 0 && (
-          <section style={{ marginBottom: 24 }}>
-            <div className="cp-section-title" style={{ marginBottom: 10 }}>
-              Hosts ({hostIds.length}) — host CPU over last 15 minutes
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
-              {hostIds.map(h => <HostMetricsCard key={h} hostId={h} />)}
-            </div>
-          </section>
-        )}
+      {tab === "versions" && (
+        <div className="cp-page">
+          {hostIds.length > 0 && (
+            <section style={{ marginBottom: 24 }}>
+              <div className="cp-section-title" style={{ marginBottom: 10 }}>
+                Hosts ({hostIds.length}) — host CPU over last 15 minutes
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+                {hostIds.map(h => <HostMetricsCard key={h} hostId={h} />)}
+              </div>
+            </section>
+          )}
 
-        {data.versions.length === 0 ? (
-          <div className="cp-empty">
-            <h2>No versions yet</h2>
-            <p>This deploy has no applied versions. Use the Wizard or POST to <Mono>/api/deploys/{data.id}/apply</Mono>.</p>
-          </div>
-        ) : (
-          <ol className="cp-timeline" style={{ listStyle: "none", paddingLeft: 20 }}>
-            {[...data.versions].reverse().map(v => {
-              const isCurrent = v.version_n === data.current_version;
-              const ok = v.result_json?.ok;
-              const status: "success" | "failed" | "in-progress" =
-                ok === true ? "success" : ok === false ? "failed" : "in-progress";
-              return (
-                <li key={v.id} className="cp-timeline__item">
-                  <span className="cp-timeline__dot" style={{ borderColor: isCurrent ? "var(--accent)" : undefined }} />
-                  <div style={{ display: "flex", gap: 14, alignItems: "baseline", flexWrap: "wrap" }}>
-                    <Mono style={{ fontSize: 13, fontWeight: 600 }}>v{v.version_n}</Mono>
-                    <Pill status={status}>{ok === true ? "Success" : ok === false ? "Failed" : "Unknown"}</Pill>
-                    {v.kind === "rollback" && <span className="cp-badge"><Icons.rotate size={10} /> rollback</span>}
-                    {isCurrent && <span className="cp-badge" style={{ color: "var(--accent)", borderColor: "var(--accent)" }}>current</span>}
-                    <span className="small dim">{relTime(v.applied_at)}</span>
-                    <span className="small dim mono" title={v.applied_by_user_id}>
-                      by {v.applied_by_username ? `@${v.applied_by_username}` : v.applied_by_user_id}
-                    </span>
-                    {!isCurrent && (
-                      <button
-                        type="button"
-                        className="cp-btn cp-btn--sm"
-                        onClick={() => id && rollback.mutate({ deployId: id, versionN: v.version_n })}
-                        disabled={rollback.isPending}
-                      >
-                        <Icons.rotate size={11} />
-                        <span>Rollback here</span>
-                      </button>
-                    )}
-                  </div>
-                  {v.result_json?.error && (
-                    <div className="small mono" style={{ color: "var(--err)", marginTop: 4 }}>
-                      {v.result_json.error}
+          {data.versions.length === 0 ? (
+            <div className="cp-empty">
+              <h2>No versions yet</h2>
+              <p>This deploy has no applied versions. Use the Wizard or POST to <Mono>/api/deploys/{data.id}/apply</Mono>.</p>
+            </div>
+          ) : (
+            <ol className="cp-timeline" style={{ listStyle: "none", paddingLeft: 20 }}>
+              {[...data.versions].reverse().map(v => {
+                const isCurrent = v.version_n === data.current_version;
+                const ok = v.result_json?.ok;
+                const status: "success" | "failed" | "in-progress" =
+                  ok === true ? "success" : ok === false ? "failed" : "in-progress";
+                return (
+                  <li key={v.id} className="cp-timeline__item">
+                    <span className="cp-timeline__dot" style={{ borderColor: isCurrent ? "var(--accent)" : undefined }} />
+                    <div style={{ display: "flex", gap: 14, alignItems: "baseline", flexWrap: "wrap" }}>
+                      <Mono style={{ fontSize: 13, fontWeight: 600 }}>v{v.version_n}</Mono>
+                      <Pill status={status}>{ok === true ? "Success" : ok === false ? "Failed" : "Unknown"}</Pill>
+                      {v.kind === "rollback" && <span className="cp-badge"><Icons.rotate size={10} /> rollback</span>}
+                      {isCurrent && <span className="cp-badge" style={{ color: "var(--accent)", borderColor: "var(--accent)" }}>current</span>}
+                      <span className="small dim">{relTime(v.applied_at)}</span>
+                      <span className="small dim mono" title={v.applied_by_user_id}>
+                        by {v.applied_by_username ? `@${v.applied_by_username}` : v.applied_by_user_id}
+                      </span>
+                      {!isCurrent && (
+                        <button
+                          type="button"
+                          className="cp-btn cp-btn--sm"
+                          onClick={() => id && rollback.mutate({ deployId: id, versionN: v.version_n })}
+                          disabled={rollback.isPending}
+                        >
+                          <Icons.rotate size={11} />
+                          <span>Rollback here</span>
+                        </button>
+                      )}
                     </div>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        )}
-      </div>
+                    {v.result_json?.error && (
+                      <div className="small mono" style={{ color: "var(--err)", marginTop: 4 }}>
+                        {v.result_json.error}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </div>
+      )}
+
+      {tab === "components" && id && (
+        <ComponentsTab parsed={parsed} deployId={id} />
+      )}
+
+      {tab === "configuration" && id && (
+        <ConfigurationTab data={data} deployId={id} />
+      )}
     </div>
   );
 }
@@ -135,6 +184,224 @@ function HostMetricsCard({ hostId }: { hostId: string }) {
       ) : (
         <div className="small dim">no samples in window</div>
       )}
+    </div>
+  );
+}
+
+function ComponentsTab({ parsed, deployId }: { parsed: ParsedDeployment; deployId: string }) {
+  const state = useDeployState();
+  if (parsed.components.length === 0) {
+    return <div className="cp-page"><div className="cp-empty"><p>No components in current version YAML.</p></div></div>;
+  }
+  const byCid = new Map<string, ComponentState[]>();
+  for (const cs of state.data?.components || []) {
+    const id = cs.component_id;
+    if (!byCid.has(id)) byCid.set(id, []);
+    byCid.get(id)!.push(cs);
+  }
+  void deployId; // reserved for Phase 3 per-deploy state endpoint.
+  return (
+    <div className="cp-page">
+      <div className="cp-component-grid">
+        {parsed.components.map(c => (
+          <ComponentCard key={c.id} component={c} states={byCid.get(c.id) || []} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ConfigurationTab({ data, deployId }: { data: DeployWithVersions; deployId: string }) {
+  const versions = [...data.versions].sort((a, b) => b.version_n - a.version_n);
+  const currentVN = data.current_version;
+  const current = versions.find(v => v.version_n === currentVN);
+  const [selectedVN, setSelectedVN] = useState<number | null>(currentVN);
+  const selected = versions.find(v => v.version_n === selectedVN) || current;
+  const [showDiff, setShowDiff] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [buffer, setBuffer] = useState<string>("");
+  const [validateOk, setValidateOk] = useState<ValidateOk | null>(null);
+  const [validateErr, setValidateErr] = useState<ValidateError | null>(null);
+  const [diffResult, setDiffResult] = useState<DeployDiff["diff"] | null>(null);
+  const [showApplyDialog, setShowApplyDialog] = useState(false);
+
+  const validate = useDeployValidate();
+  const diff = useDeployDiff();
+  const apply = useApplyDeploy();
+
+  if (!current || !selected) {
+    return <div className="cp-page"><div className="cp-empty"><p>No applied version yet.</p></div></div>;
+  }
+
+  const isCurrent = selected.version_n === currentVN;
+
+  const enterEdit = () => {
+    setBuffer(selected.yaml_text);
+    setValidateOk(null);
+    setValidateErr(null);
+    setDiffResult(null);
+    setEditing(true);
+  };
+  const exitEdit = () => {
+    setEditing(false);
+    setBuffer("");
+    setValidateOk(null);
+    setValidateErr(null);
+    setDiffResult(null);
+  };
+
+  const onBufferChange = (v: string) => {
+    setBuffer(v);
+    if (validateOk || validateErr) { setValidateOk(null); setValidateErr(null); }
+    if (diffResult) setDiffResult(null);
+  };
+
+  const runValidate = () => {
+    setValidateErr(null);
+    setValidateOk(null);
+    validate.mutate(
+      { deployId, yaml_text: buffer },
+      {
+        onSuccess: r => setValidateOk(r),
+        onError: e => setValidateErr(e),
+      },
+    );
+  };
+  const runDiff = () => {
+    setDiffResult(null);
+    diff.mutate(
+      { deployId, yaml_text: buffer },
+      { onSuccess: r => setDiffResult(r.diff) },
+    );
+  };
+  const startApply = () => { runDiff(); setShowApplyDialog(true); };
+  const confirmApply = () => {
+    apply.mutate(
+      { deployId, yaml_text: buffer },
+      { onSuccess: () => { setShowApplyDialog(false); exitEdit(); } },
+    );
+  };
+
+  return (
+    <div className="cp-page">
+      <div className="cp-config-toolbar">
+        <label className="small dim" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          Version
+          <select
+            value={selected.version_n}
+            onChange={e => { setSelectedVN(Number(e.target.value)); setShowDiff(false); if (editing) exitEdit(); }}
+            className="cp-select"
+            disabled={editing}
+          >
+            {versions.map(v => (
+              <option key={v.version_n} value={v.version_n}>
+                v{v.version_n}{v.version_n === currentVN ? " (current)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        {!isCurrent && !editing && (
+          <button
+            type="button"
+            className={`cp-btn cp-btn--sm${showDiff ? " cp-btn--primary" : ""}`}
+            onClick={() => setShowDiff(s => !s)}
+          >
+            {showDiff ? "Hide diff" : "Diff vs current"}
+          </button>
+        )}
+        <div style={{ flex: 1 }} />
+        {!editing && isCurrent && (
+          <button type="button" className="cp-btn cp-btn--sm cp-btn--primary" onClick={enterEdit}>
+            Edit raw YAML
+          </button>
+        )}
+        {editing && (
+          <>
+            <button
+              type="button"
+              className="cp-btn cp-btn--sm"
+              onClick={runValidate}
+              disabled={validate.isPending}
+            >
+              {validate.isPending ? "Validating…" : "Validate"}
+            </button>
+            <button
+              type="button"
+              className="cp-btn cp-btn--sm"
+              onClick={runDiff}
+              disabled={diff.isPending || !validateOk}
+            >
+              {diff.isPending ? "Diffing…" : "Diff vs current"}
+            </button>
+            <button
+              type="button"
+              className="cp-btn cp-btn--sm cp-btn--primary"
+              onClick={startApply}
+              disabled={!validateOk || apply.isPending}
+              title={!validateOk ? "Run Validate first" : undefined}
+            >
+              Apply
+            </button>
+            <button type="button" className="cp-btn cp-btn--sm" onClick={exitEdit}>Cancel</button>
+          </>
+        )}
+      </div>
+
+      {showDiff && !editing && !isCurrent ? (
+        <YamlDiff
+          left={selected.yaml_text}
+          right={current.yaml_text}
+          leftLabel={`v${selected.version_n}`}
+          rightLabel={`v${current.version_n} (current)`}
+        />
+      ) : editing ? (
+        <YamlEditor value={buffer} readOnly={false} onChange={onBufferChange} />
+      ) : (
+        <YamlEditor value={selected.yaml_text} readOnly />
+      )}
+
+      {editing && validateOk && (
+        <div className="cp-validate-ok small">
+          ✓ Valid: {validateOk.components.length} component(s), {validateOk.hosts.length} host(s)
+        </div>
+      )}
+      {editing && validateErr && (
+        <div className="cp-validate-err">
+          <strong>Validation failed</strong>
+          <div className="small mono">{validateErr.message}</div>
+          {validateErr.details && validateErr.details.length > 0 && (
+            <ul className="cp-validate-err__list small mono">
+              {validateErr.details.map((d, i) => (
+                <li key={i}>{d.path ? `${d.path}: ` : ""}{d.message || d.code || JSON.stringify(d)}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {editing && diffResult && (
+        <div className="small mono cp-config-diff-summary">
+          diff: {(diffResult.created || []).length} created · {(diffResult.updated || []).length} updated · {(diffResult.removed || []).length} removed
+        </div>
+      )}
+      {apply.error && (
+        <div className="cp-validate-err">
+          <strong>Apply failed</strong>
+          <div className="small mono">{String(apply.error)}</div>
+        </div>
+      )}
+
+      {showApplyDialog && diffResult && (
+        <ConfirmApplyDialog
+          diff={diffResult}
+          onCancel={() => setShowApplyDialog(false)}
+          onConfirm={confirmApply}
+          busy={apply.isPending}
+        />
+      )}
+
+      <div className="small dim mono" style={{ marginTop: 10 }}>
+        deploy <span title={deployId}>{deployId}</span>
+      </div>
     </div>
   );
 }

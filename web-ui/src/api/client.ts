@@ -282,6 +282,133 @@ export function useComponentMetric(
   return useMetricRange("component", componentId, metric, windowSeconds, enabled);
 }
 
+// ----- DeployDetail M4.5 hooks -----
+
+export type ComponentState = {
+  host_id: string;
+  component_id: string;
+  status?: string;
+  healthy?: boolean | null;
+  [k: string]: unknown;
+};
+
+export type DeployState = {
+  project: string | null;
+  components: ComponentState[];
+  hosts: { host_id: string; online: boolean }[];
+};
+
+export function useDeployState(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["state"],
+    enabled,
+    queryFn: () => api<DeployState>("/api/state"),
+    refetchInterval: 5_000,
+    staleTime: 2_000,
+  });
+}
+
+export type ValidateOk = { ok: true; project: string; hosts: string[]; components: string[] };
+export type ValidateErrorDetail = { path?: string; code?: string; message?: string };
+export type ValidateError = {
+  kind: "loader" | "semantic";
+  message: string;
+  details?: ValidateErrorDetail[];
+};
+
+async function validateBody(deployId: string, yaml_text: string): Promise<ValidateOk> {
+  const r = await fetch(`/api/deploys/${deployId}/validate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ yaml_text }),
+  });
+  if (r.ok) return r.json();
+  let detail: unknown = null;
+  try { detail = (await r.json()).detail; } catch { /* not json */ }
+  if (Array.isArray(detail)) {
+    const err: ValidateError = {
+      kind: "semantic",
+      message: "validation failed",
+      details: detail as ValidateErrorDetail[],
+    };
+    throw err;
+  }
+  const err: ValidateError = {
+    kind: "loader",
+    message: typeof detail === "string" ? detail : `HTTP ${r.status}`,
+  };
+  throw err;
+}
+
+export function useDeployValidate() {
+  return useMutation<ValidateOk, ValidateError, { deployId: string; yaml_text: string }>({
+    mutationFn: ({ deployId, yaml_text }) => validateBody(deployId, yaml_text),
+  });
+}
+
+export type DeployDiff = {
+  ok: true;
+  diff: {
+    created?: { component_id: string; host_id?: string }[];
+    updated?: { component_id: string; host_id?: string }[];
+    removed?: { component_id: string; host_id?: string }[];
+    unchanged?: { component_id: string; host_id?: string }[];
+    [k: string]: unknown;
+  };
+};
+
+export function useDeployDiff() {
+  return useMutation<DeployDiff, Error, { deployId: string; yaml_text: string }>({
+    mutationFn: async ({ deployId, yaml_text }) => {
+      const r = await fetch(`/api/deploys/${deployId}/diff`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ yaml_text }),
+      });
+      if (!r.ok) {
+        const text = await r.text();
+        throw new Error(`diff failed (${r.status}): ${text}`);
+      }
+      return r.json();
+    },
+  });
+}
+
+export function useApplyDeploy() {
+  const qc = useQueryClient();
+  return useMutation<unknown, Error, { deployId: string; yaml_text: string }>({
+    mutationFn: async ({ deployId, yaml_text }) => {
+      const r = await fetch(`/api/deploys/${deployId}/apply`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ yaml_text }),
+      });
+      if (!r.ok) {
+        const text = await r.text();
+        throw new Error(`apply failed (${r.status}): ${text}`);
+      }
+      return r.json();
+    },
+    onSuccess: (_d, { deployId }) => {
+      qc.invalidateQueries({ queryKey: ["deploy", deployId] });
+      qc.invalidateQueries({ queryKey: ["deploys"] });
+      qc.invalidateQueries({ queryKey: ["state"] });
+    },
+  });
+}
+
+export function useComponentLogs(componentId: string | undefined, lines = 200) {
+  return useQuery({
+    queryKey: ["component-logs", componentId, lines],
+    enabled: !!componentId,
+    queryFn: () =>
+      api<{ ok: true; host_id: string; component_id: string; lines: string[] }>(
+        `/api/components/${encodeURIComponent(componentId!)}/logs?lines=${lines}`,
+      ),
+    refetchInterval: 5_000,
+  });
+}
+
 // ----- Wizard helpers -----
 
 export type DockerSuggestions = {
