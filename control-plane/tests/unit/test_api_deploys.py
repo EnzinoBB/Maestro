@@ -49,6 +49,43 @@ def test_create_list_get_delete_cycle(client):
     assert r.status_code == 404
 
 
+def test_list_deploys_projects_latest_version(client):
+    # Empty deploy: latest_version is null
+    r = client.post("/api/deploys", json={"name": "fresh"})
+    assert r.status_code == 201
+    fresh_id = r.json()["id"]
+    assert r.json()["latest_version"] is None
+
+    # Apply a version, then list — latest_version reflects the apply result
+    client.post(f"/api/deploys/{fresh_id}/apply", json={"yaml_text": _YAML})
+
+    r = client.get("/api/deploys")
+    assert r.status_code == 200
+    deploys = r.json()["deploys"]
+    fresh = next(d for d in deploys if d["id"] == fresh_id)
+    assert fresh["current_version"] == 1
+    lv = fresh["latest_version"]
+    assert lv is not None
+    assert lv["version_n"] == 1
+    assert lv["kind"] == "apply"
+    # result_json.ok is False here because no daemon is connected, but the
+    # important thing is that the projection is populated and not "unknown".
+    assert isinstance(lv["result_json"], dict)
+    assert "ok" in lv["result_json"]
+    assert lv["applied_by_user_id"] == "singleuser"
+
+
+def test_get_deploy_includes_latest_version(client):
+    r = client.post("/api/deploys", json={"name": "g"})
+    deploy_id = r.json()["id"]
+    client.post(f"/api/deploys/{deploy_id}/apply", json={"yaml_text": _YAML})
+
+    r = client.get(f"/api/deploys/{deploy_id}")
+    body = r.json()
+    assert body["latest_version"] is not None
+    assert body["latest_version"]["version_n"] == body["current_version"]
+
+
 def test_create_duplicate_name_is_409(client):
     client.post("/api/deploys", json={"name": "x"})
     r = client.post("/api/deploys", json={"name": "x"})

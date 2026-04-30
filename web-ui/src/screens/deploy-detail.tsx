@@ -23,7 +23,7 @@ export function DeployDetailScreen() {
   if (error) return <div className="cp-page"><div className="cp-empty"><h2>Error</h2><p className="mono">{String(error)}</p></div></div>;
   if (!data) return null;
 
-  const health = deployHealth(data, data.versions);
+  const health = deployHealth(data);
   const currentVersion = data.versions.find(v => v.version_n === data.current_version);
   const hostIds = currentVersion ? extractHostIds(currentVersion.yaml_text) : [];
 
