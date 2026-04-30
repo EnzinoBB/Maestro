@@ -6,14 +6,21 @@ import {
   deployHealth,
   useHostCpuSeries,
   useDeployState,
+  useDeployValidate,
+  useDeployDiff,
+  useApplyDeploy,
   type DeployWithVersions,
   type ComponentState,
+  type DeployDiff,
+  type ValidateError,
+  type ValidateOk,
 } from "../api/client";
 import { Pill, Mono, relTime, Icons, StatusDot, Sparkline } from "../primitives";
 import { parseDeployYaml, type ParsedDeployment } from "../lib/yamlparse";
 import { ComponentCard } from "../components/ComponentCard";
 import { YamlEditor } from "../components/YamlEditor";
 import { YamlDiff } from "../components/YamlDiff";
+import { ConfirmApplyDialog } from "../components/ConfirmApplyDialog";
 
 type TabKey = "versions" | "components" | "configuration";
 
@@ -211,12 +218,69 @@ function ConfigurationTab({ data, deployId }: { data: DeployWithVersions; deploy
   const [selectedVN, setSelectedVN] = useState<number | null>(currentVN);
   const selected = versions.find(v => v.version_n === selectedVN) || current;
   const [showDiff, setShowDiff] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [buffer, setBuffer] = useState<string>("");
+  const [validateOk, setValidateOk] = useState<ValidateOk | null>(null);
+  const [validateErr, setValidateErr] = useState<ValidateError | null>(null);
+  const [diffResult, setDiffResult] = useState<DeployDiff["diff"] | null>(null);
+  const [showApplyDialog, setShowApplyDialog] = useState(false);
+
+  const validate = useDeployValidate();
+  const diff = useDeployDiff();
+  const apply = useApplyDeploy();
 
   if (!current || !selected) {
     return <div className="cp-page"><div className="cp-empty"><p>No applied version yet.</p></div></div>;
   }
 
   const isCurrent = selected.version_n === currentVN;
+
+  const enterEdit = () => {
+    setBuffer(selected.yaml_text);
+    setValidateOk(null);
+    setValidateErr(null);
+    setDiffResult(null);
+    setEditing(true);
+  };
+  const exitEdit = () => {
+    setEditing(false);
+    setBuffer("");
+    setValidateOk(null);
+    setValidateErr(null);
+    setDiffResult(null);
+  };
+
+  const onBufferChange = (v: string) => {
+    setBuffer(v);
+    if (validateOk || validateErr) { setValidateOk(null); setValidateErr(null); }
+    if (diffResult) setDiffResult(null);
+  };
+
+  const runValidate = () => {
+    setValidateErr(null);
+    setValidateOk(null);
+    validate.mutate(
+      { deployId, yaml_text: buffer },
+      {
+        onSuccess: r => setValidateOk(r),
+        onError: e => setValidateErr(e),
+      },
+    );
+  };
+  const runDiff = () => {
+    setDiffResult(null);
+    diff.mutate(
+      { deployId, yaml_text: buffer },
+      { onSuccess: r => setDiffResult(r.diff) },
+    );
+  };
+  const startApply = () => { runDiff(); setShowApplyDialog(true); };
+  const confirmApply = () => {
+    apply.mutate(
+      { deployId, yaml_text: buffer },
+      { onSuccess: () => { setShowApplyDialog(false); exitEdit(); } },
+    );
+  };
 
   return (
     <div className="cp-page">
@@ -225,8 +289,9 @@ function ConfigurationTab({ data, deployId }: { data: DeployWithVersions; deploy
           Version
           <select
             value={selected.version_n}
-            onChange={e => { setSelectedVN(Number(e.target.value)); setShowDiff(false); }}
+            onChange={e => { setSelectedVN(Number(e.target.value)); setShowDiff(false); if (editing) exitEdit(); }}
             className="cp-select"
+            disabled={editing}
           >
             {versions.map(v => (
               <option key={v.version_n} value={v.version_n}>
@@ -235,7 +300,7 @@ function ConfigurationTab({ data, deployId }: { data: DeployWithVersions; deploy
             ))}
           </select>
         </label>
-        {!isCurrent && (
+        {!isCurrent && !editing && (
           <button
             type="button"
             className={`cp-btn cp-btn--sm${showDiff ? " cp-btn--primary" : ""}`}
@@ -245,18 +310,95 @@ function ConfigurationTab({ data, deployId }: { data: DeployWithVersions; deploy
           </button>
         )}
         <div style={{ flex: 1 }} />
+        {!editing && isCurrent && (
+          <button type="button" className="cp-btn cp-btn--sm cp-btn--primary" onClick={enterEdit}>
+            Edit raw YAML
+          </button>
+        )}
+        {editing && (
+          <>
+            <button
+              type="button"
+              className="cp-btn cp-btn--sm"
+              onClick={runValidate}
+              disabled={validate.isPending}
+            >
+              {validate.isPending ? "Validating…" : "Validate"}
+            </button>
+            <button
+              type="button"
+              className="cp-btn cp-btn--sm"
+              onClick={runDiff}
+              disabled={diff.isPending || !validateOk}
+            >
+              {diff.isPending ? "Diffing…" : "Diff vs current"}
+            </button>
+            <button
+              type="button"
+              className="cp-btn cp-btn--sm cp-btn--primary"
+              onClick={startApply}
+              disabled={!validateOk || apply.isPending}
+              title={!validateOk ? "Run Validate first" : undefined}
+            >
+              Apply
+            </button>
+            <button type="button" className="cp-btn cp-btn--sm" onClick={exitEdit}>Cancel</button>
+          </>
+        )}
       </div>
 
-      {showDiff && !isCurrent ? (
+      {showDiff && !editing && !isCurrent ? (
         <YamlDiff
           left={selected.yaml_text}
           right={current.yaml_text}
           leftLabel={`v${selected.version_n}`}
           rightLabel={`v${current.version_n} (current)`}
         />
+      ) : editing ? (
+        <YamlEditor value={buffer} readOnly={false} onChange={onBufferChange} />
       ) : (
         <YamlEditor value={selected.yaml_text} readOnly />
       )}
+
+      {editing && validateOk && (
+        <div className="cp-validate-ok small">
+          ✓ Valid: {validateOk.components.length} component(s), {validateOk.hosts.length} host(s)
+        </div>
+      )}
+      {editing && validateErr && (
+        <div className="cp-validate-err">
+          <strong>Validation failed</strong>
+          <div className="small mono">{validateErr.message}</div>
+          {validateErr.details && validateErr.details.length > 0 && (
+            <ul className="cp-validate-err__list small mono">
+              {validateErr.details.map((d, i) => (
+                <li key={i}>{d.path ? `${d.path}: ` : ""}{d.message || d.code || JSON.stringify(d)}</li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+      {editing && diffResult && (
+        <div className="small mono cp-config-diff-summary">
+          diff: {(diffResult.created || []).length} created · {(diffResult.updated || []).length} updated · {(diffResult.removed || []).length} removed
+        </div>
+      )}
+      {apply.error && (
+        <div className="cp-validate-err">
+          <strong>Apply failed</strong>
+          <div className="small mono">{String(apply.error)}</div>
+        </div>
+      )}
+
+      {showApplyDialog && diffResult && (
+        <ConfirmApplyDialog
+          diff={diffResult}
+          onCancel={() => setShowApplyDialog(false)}
+          onConfirm={confirmApply}
+          busy={apply.isPending}
+        />
+      )}
+
       <div className="small dim mono" style={{ marginTop: 10 }}>
         deploy <span title={deployId}>{deployId}</span>
       </div>
