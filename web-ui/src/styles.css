@@ -582,3 +582,9 @@ a { color: inherit; text-decoration: none; }
   font-size: 12px;
 }
 .cp-modal__actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+.cp-config-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+.cp-select {
+  background: var(--bg-1); color: var(--fg); border: 1px solid var(--border);
+  border-radius: 4px; padding: 4px 6px; font: inherit;
+}

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
   useDeploy,
@@ -11,6 +12,8 @@ import {
 import { Pill, Mono, relTime, Icons, StatusDot, Sparkline } from "../primitives";
 import { parseDeployYaml, type ParsedDeployment } from "../lib/yamlparse";
 import { ComponentCard } from "../components/ComponentCard";
+import { YamlEditor } from "../components/YamlEditor";
+import { YamlDiff } from "../components/YamlDiff";
 
 type TabKey = "versions" | "components" | "configuration";
 
@@ -201,6 +204,62 @@ function ComponentsTab({ parsed, deployId }: { parsed: ParsedDeployment; deployI
   );
 }
 
-function ConfigurationTab(_p: { data: DeployWithVersions; deployId: string }) {
-  return <div className="cp-page"><div className="cp-empty"><p>Configuration — wiring up…</p></div></div>;
+function ConfigurationTab({ data, deployId }: { data: DeployWithVersions; deployId: string }) {
+  const versions = [...data.versions].sort((a, b) => b.version_n - a.version_n);
+  const currentVN = data.current_version;
+  const current = versions.find(v => v.version_n === currentVN);
+  const [selectedVN, setSelectedVN] = useState<number | null>(currentVN);
+  const selected = versions.find(v => v.version_n === selectedVN) || current;
+  const [showDiff, setShowDiff] = useState(false);
+
+  if (!current || !selected) {
+    return <div className="cp-page"><div className="cp-empty"><p>No applied version yet.</p></div></div>;
+  }
+
+  const isCurrent = selected.version_n === currentVN;
+
+  return (
+    <div className="cp-page">
+      <div className="cp-config-toolbar">
+        <label className="small dim" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          Version
+          <select
+            value={selected.version_n}
+            onChange={e => { setSelectedVN(Number(e.target.value)); setShowDiff(false); }}
+            className="cp-select"
+          >
+            {versions.map(v => (
+              <option key={v.version_n} value={v.version_n}>
+                v{v.version_n}{v.version_n === currentVN ? " (current)" : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+        {!isCurrent && (
+          <button
+            type="button"
+            className={`cp-btn cp-btn--sm${showDiff ? " cp-btn--primary" : ""}`}
+            onClick={() => setShowDiff(s => !s)}
+          >
+            {showDiff ? "Hide diff" : "Diff vs current"}
+          </button>
+        )}
+        <div style={{ flex: 1 }} />
+      </div>
+
+      {showDiff && !isCurrent ? (
+        <YamlDiff
+          left={selected.yaml_text}
+          right={current.yaml_text}
+          leftLabel={`v${selected.version_n}`}
+          rightLabel={`v${current.version_n} (current)`}
+        />
+      ) : (
+        <YamlEditor value={selected.yaml_text} readOnly />
+      )}
+      <div className="small dim mono" style={{ marginTop: 10 }}>
+        deploy <span title={deployId}>{deployId}</span>
+      </div>
+    </div>
+  );
 }
