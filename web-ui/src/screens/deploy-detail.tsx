@@ -4,10 +4,13 @@ import {
   useRollback,
   deployHealth,
   useHostCpuSeries,
+  useDeployState,
   type DeployWithVersions,
+  type ComponentState,
 } from "../api/client";
 import { Pill, Mono, relTime, Icons, StatusDot, Sparkline } from "../primitives";
 import { parseDeployYaml, type ParsedDeployment } from "../lib/yamlparse";
+import { ComponentCard } from "../components/ComponentCard";
 
 type TabKey = "versions" | "components" | "configuration";
 
@@ -175,8 +178,27 @@ function HostMetricsCard({ hostId }: { hostId: string }) {
   );
 }
 
-function ComponentsTab(_p: { parsed: ParsedDeployment; deployId: string }) {
-  return <div className="cp-page"><div className="cp-empty"><p>Components — wiring up…</p></div></div>;
+function ComponentsTab({ parsed, deployId }: { parsed: ParsedDeployment; deployId: string }) {
+  const state = useDeployState();
+  if (parsed.components.length === 0) {
+    return <div className="cp-page"><div className="cp-empty"><p>No components in current version YAML.</p></div></div>;
+  }
+  const byCid = new Map<string, ComponentState[]>();
+  for (const cs of state.data?.components || []) {
+    const id = cs.component_id;
+    if (!byCid.has(id)) byCid.set(id, []);
+    byCid.get(id)!.push(cs);
+  }
+  void deployId; // reserved for Phase 3 per-deploy state endpoint.
+  return (
+    <div className="cp-page">
+      <div className="cp-component-grid">
+        {parsed.components.map(c => (
+          <ComponentCard key={c.id} component={c} states={byCid.get(c.id) || []} />
+        ))}
+      </div>
+    </div>
+  );
 }
 
 function ConfigurationTab(_p: { data: DeployWithVersions; deployId: string }) {
