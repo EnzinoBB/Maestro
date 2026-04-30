@@ -12,7 +12,6 @@ def client(monkeypatch):
     with tempfile.TemporaryDirectory() as td:
         monkeypatch.setenv("MAESTRO_DB", os.path.join(td, "t.db"))
         monkeypatch.setenv("MAESTRO_METRICS_RETENTION_INTERVAL_S", "3600")
-        monkeypatch.setenv("MAESTRO_SINGLE_USER_MODE", "false")
         app = create_app()
         with TestClient(app) as c:
             # Setup admin so we have a logged-in admin session

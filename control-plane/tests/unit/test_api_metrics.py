@@ -10,8 +10,13 @@ from app.main import create_app
 def client(monkeypatch):
     with tempfile.TemporaryDirectory() as td:
         monkeypatch.setenv("MAESTRO_DB", os.path.join(td, "t.db"))
+        monkeypatch.setenv("MAESTRO_METRICS_RETENTION_INTERVAL_S", "3600")
         app = create_app()
         with TestClient(app) as c:
+            # Setup admin
+            r = c.post("/api/auth/setup-admin",
+                       json={"username": "admin", "password": "correct-horse"})
+            assert r.status_code == 200
             yield c, app
 
 

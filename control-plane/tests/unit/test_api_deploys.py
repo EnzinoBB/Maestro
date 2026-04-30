@@ -13,8 +13,13 @@ FIXTURES = Path(__file__).resolve().parents[3] / "tests" / "fixtures"
 def client(monkeypatch):
     with tempfile.TemporaryDirectory() as td:
         monkeypatch.setenv("MAESTRO_DB", os.path.join(td, "t.db"))
+        monkeypatch.setenv("MAESTRO_METRICS_RETENTION_INTERVAL_S", "3600")
         app = create_app()
         with TestClient(app) as c:
+            # Setup admin
+            r = c.post("/api/auth/setup-admin",
+                       json={"username": "admin", "password": "correct-horse"})
+            assert r.status_code == 200
             yield c
 
 
@@ -29,7 +34,8 @@ def test_create_list_get_delete_cycle(client):
     assert r.status_code == 201, r.text
     created = r.json()
     assert created["name"] == "webapp-prod"
-    assert created["owner_user_id"] == "singleuser"
+    # owner_user_id should be the admin user created by the fixture
+    assert created["owner_user_id"] is not None
     assert created["current_version"] is None
     deploy_id = created["id"]
 
@@ -47,6 +53,45 @@ def test_create_list_get_delete_cycle(client):
 
     r = client.get(f"/api/deploys/{deploy_id}")
     assert r.status_code == 404
+
+
+def test_list_deploys_projects_latest_version(client):
+    # Empty deploy: latest_version is null
+    r = client.post("/api/deploys", json={"name": "fresh"})
+    assert r.status_code == 201
+    fresh_id = r.json()["id"]
+    assert r.json()["latest_version"] is None
+
+    # Apply a version, then list — latest_version reflects the apply result
+    client.post(f"/api/deploys/{fresh_id}/apply", json={"yaml_text": _YAML})
+
+    r = client.get("/api/deploys")
+    assert r.status_code == 200
+    deploys = r.json()["deploys"]
+    fresh = next(d for d in deploys if d["id"] == fresh_id)
+    assert fresh["current_version"] == 1
+    lv = fresh["latest_version"]
+    assert lv is not None
+    assert lv["version_n"] == 1
+    assert lv["kind"] == "apply"
+    # result_json.ok is False here because no daemon is connected, but the
+    # important thing is that the projection is populated and not "unknown".
+    assert isinstance(lv["result_json"], dict)
+    assert "ok" in lv["result_json"]
+    # Attributed to the calling user (admin from the fixture).
+    assert isinstance(lv["applied_by_user_id"], str)
+    assert lv["applied_by_user_id"] != "singleuser"
+
+
+def test_get_deploy_includes_latest_version(client):
+    r = client.post("/api/deploys", json={"name": "g"})
+    deploy_id = r.json()["id"]
+    client.post(f"/api/deploys/{deploy_id}/apply", json={"yaml_text": _YAML})
+
+    r = client.get(f"/api/deploys/{deploy_id}")
+    body = r.json()
+    assert body["latest_version"] is not None
+    assert body["latest_version"]["version_n"] == body["current_version"]
 
 
 def test_create_duplicate_name_is_409(client):
@@ -197,6 +242,9 @@ deployment:
     r = client.post(f"/api/deploys/{d2}/apply", json={"yaml_text": yaml2})
     assert r.status_code == 409, r.text
     body = r.json()
-    assert "conflicts" in body["detail"]
-    assert body["detail"]["conflicts"][0]["kind"] == "host_port_collision"
-    assert body["detail"]["conflicts"][0]["host_port"] == 80
+    assert body["ok"] is False
+    assert body["error"]["code"] == "conflict"
+    assert "message" in body["error"]
+    assert "conflicts" in body["error"]
+    assert body["error"]["conflicts"][0]["kind"] == "host_port_collision"
+    assert body["error"]["conflicts"][0]["host_port"] == 80

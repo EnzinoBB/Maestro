@@ -7,7 +7,7 @@ import { EnrollDrawer, NodesEmpty } from "../components/EnrollDrawer";
 
 export function NodesScreen() {
   const { state } = useAuth();
-  const isAdmin = state.status === "single-user" || (state.status === "authenticated" && state.is_admin);
+  const isAdmin = state.status === "authenticated" && state.is_admin;
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [knownAtOpen, setKnownAtOpen] = useState<Set<string>>(new Set());
 

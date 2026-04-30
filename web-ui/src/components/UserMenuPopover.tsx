@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Badge, Mono, Icons } from "../primitives";
+import { Link } from "react-router-dom";
+import { Badge, Icons } from "../primitives";
 import { useAuth } from "../hooks/useAuth";
-import { ChangePasswordDialog } from "./ChangePasswordDialog";
 
 const menuItemStyle: React.CSSProperties = {
   width: "100%", justifyContent: "flex-start", padding: "8px 10px",
@@ -10,19 +10,15 @@ const menuItemStyle: React.CSSProperties = {
 
 /**
  * Topbar avatar+username button that opens a popover with:
- *   - identity block (avatar + @username + role + email)
- *   - Change password (multi-user only)
+ *   - identity block (avatar + @username + role)
+ *   - Settings (navigate to /settings)
  *   - Switch user (logout + redirect to /login, with confirm)
  *   - Sign out (logout, with confirm)
- *
- * In single-user mode the popover only shows the identity + an inline hint
- * about MAESTRO_SINGLE_USER_MODE.
  */
 export function UserMenuPopover() {
   const { state, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [confirm, setConfirm] = useState<null | "switch" | "out">(null);
-  const [changing, setChanging] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -34,13 +30,11 @@ export function UserMenuPopover() {
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
-  if (state.status !== "authenticated" && state.status !== "single-user") return null;
+  if (state.status !== "authenticated") return null;
 
   const username = state.username;
-  const isSingleUser = state.status === "single-user";
   const role: "admin" | "operator" = state.is_admin ? "admin" : "operator";
   const avatar = username.slice(0, 2).toUpperCase();
-  const email = ""; // M5 schema has email but /api/auth/me doesn't expose it yet
 
   const onSignOutConfirmed = async () => {
     setConfirm(null);
@@ -69,11 +63,6 @@ export function UserMenuPopover() {
           fontSize: 10, fontWeight: 600,
         }}>{avatar}</div>
         <span style={{ fontSize: 11, fontWeight: 500 }}>@{username}</span>
-        {isSingleUser && (
-          <span style={{ fontSize: 10, color: "var(--fg-muted)", fontFamily: "var(--font-mono)" }}>
-            (single-user)
-          </span>
-        )}
         <Icons.chevronDown size={11} />
       </button>
 
@@ -93,39 +82,26 @@ export function UserMenuPopover() {
                   <span style={{ fontWeight: 600 }}>@{username}</span>
                   <Badge status={role === "admin" ? "info" : "healthy"}>{role}</Badge>
                 </div>
-                <Mono dim style={{ fontSize: 11 }}>{email || "no email set"}</Mono>
               </div>
             </div>
           </div>
 
-          {!isSingleUser ? (
-            <div style={{ padding: 4 }}>
-              <button type="button" className="cp-btn cp-btn--ghost" style={menuItemStyle}
-                onClick={() => { setOpen(false); setChanging(true); }}>
-                <Icons.settings size={13} /> <span>Change password</span>
+          <div style={{ padding: 4 }}>
+            <Link to="/settings" onClick={() => setOpen(false)}>
+              <button type="button" className="cp-btn cp-btn--ghost" style={menuItemStyle}>
+                <Icons.settings size={13} /> <span>Settings</span>
               </button>
-              <button type="button" className="cp-btn cp-btn--ghost" style={menuItemStyle}
-                onClick={() => setConfirm("switch")}>
-                <Icons.user size={13} /> <span>Switch user</span>
-              </button>
-              <div style={{ height: 1, background: "var(--border)", margin: "4px 6px" }} />
-              <button type="button" className="cp-btn cp-btn--ghost cp-btn--danger" style={menuItemStyle}
-                onClick={() => setConfirm("out")}>
-                <Icons.x size={13} /> <span>Sign out</span>
-              </button>
-            </div>
-          ) : (
-            <div style={{ padding: 12 }}>
-              <div className="small dim" style={{ lineHeight: 1.55 }}>
-                Multi-user is off — set{" "}
-                <Mono style={{
-                  background: "var(--bg-2)", padding: "1px 5px",
-                  borderRadius: 3, border: "1px solid var(--border)",
-                }}>MAESTRO_SINGLE_USER_MODE=false</Mono>{" "}
-                to enable login.
-              </div>
-            </div>
-          )}
+            </Link>
+            <button type="button" className="cp-btn cp-btn--ghost" style={menuItemStyle}
+              onClick={() => setConfirm("switch")}>
+              <Icons.user size={13} /> <span>Switch user</span>
+            </button>
+            <div style={{ height: 1, background: "var(--border)", margin: "4px 6px" }} />
+            <button type="button" className="cp-btn cp-btn--ghost cp-btn--danger" style={menuItemStyle}
+              onClick={() => setConfirm("out")}>
+              <Icons.x size={13} /> <span>Sign out</span>
+            </button>
+          </div>
         </div>
       )}
 
@@ -142,8 +118,6 @@ export function UserMenuPopover() {
           onConfirm={confirm === "switch" ? onSwitchConfirmed : onSignOutConfirmed}
         />
       )}
-
-      {changing && <ChangePasswordDialog onClose={() => setChanging(false)} />}
     </div>
   );
 }

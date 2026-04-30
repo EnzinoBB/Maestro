@@ -221,3 +221,17 @@ async def test_versions_isolated_between_deploys():
         vb = await repo.list_versions(b["id"])
         assert [v["version_n"] for v in va] == [1, 2]
         assert [v["version_n"] for v in vb] == [1]
+
+
+@pytest.mark.asyncio
+async def test_api_keys_table_exists():
+    with tempfile.TemporaryDirectory() as td:
+        path = os.path.join(td, "t.db")
+        s = Storage(path)
+        await s.init()
+        async with aiosqlite.connect(path) as db:
+            async with db.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='api_keys'"
+            ) as cur:
+                row = await cur.fetchone()
+        assert row is not None, "api_keys table must be created by Storage.init()"

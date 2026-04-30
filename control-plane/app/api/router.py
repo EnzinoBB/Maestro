@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 from typing import Any
-from fastapi import APIRouter, Body, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from ..auth.deps import require_user
 from ..config.loader import parse_deployment, LoaderError
 from ..config.validator import validate as semantic_validate
 from ..config.hashing import components_hash_from_rendered
@@ -12,7 +13,7 @@ from ..orchestrator import Engine
 from ..storage_deploys import DeployRepository
 
 
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
 
 
 def _errors_payload(code: str, message: str, errors: list[dict] | None = None) -> dict:
@@ -68,7 +69,7 @@ async def list_hosts(request: Request):
 
 
 @router.get("/config")
-async def get_config(request: Request):
+async def get_config(request: Request, uid: str = Depends(require_user)):
     """Legacy: return the latest applied YAML.
 
     Now sourced from the 'default' deploy's current version. Falls back to
@@ -76,7 +77,7 @@ async def get_config(request: Request):
     (which can happen on a fresh install that hasn't received an apply).
     """
     deploy_repo: DeployRepository = request.app.state.deploy_repo
-    default = await deploy_repo.get_by_name("singleuser", "default")
+    default = await deploy_repo.get_by_name(uid, "default")
     if default is None or default["current_version"] is None:
         storage = request.app.state.storage
         row = await storage.load_config()
@@ -132,7 +133,7 @@ async def post_diff(request: Request):
 
 
 @router.post("/config/apply")
-async def post_apply(request: Request):
+async def post_apply(request: Request, uid: str = Depends(require_user)):
     yaml_text, template_store, files_store = await _read_apply_body(request)
     dry_run = request.query_params.get("dry_run", "false").lower() == "true"
     try:
@@ -159,9 +160,9 @@ async def post_apply(request: Request):
     if not dry_run:
         await storage.record_deploy(spec.project, result.ok, result.to_dict())
         # Route through the default deploy in the new schema
-        default = await deploy_repo.get_by_name("singleuser", "default")
+        default = await deploy_repo.get_by_name(uid, "default")
         if default is None:
-            default = await deploy_repo.create("default", owner_user_id="singleuser")
+            default = await deploy_repo.create("default", owner_user_id=uid)
         rendered = engine.render_all(
             spec, template_store=template_store, files_store=files_store,
         )
@@ -170,7 +171,7 @@ async def post_apply(request: Request):
             default["id"],
             yaml_text=yaml_text,
             components_hash=ch,
-            applied_by_user_id="singleuser",
+            applied_by_user_id=uid,
             result_json=result.to_dict(),
             kind="apply",
         )

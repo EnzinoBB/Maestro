@@ -4,26 +4,16 @@ from __future__ import annotations
 import os
 import secrets
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
-from ..auth.middleware import SINGLEUSER_ID, is_single_user_mode
+from ..auth.deps import require_user
+from ..auth.middleware import SINGLEUSER_ID
 from ..auth.passwords import hash_password
 from ..auth.users_repo import UserAlreadyExists, UserNotFound
 from ..storage_nodes import NodeNotFound
 
 
-router = APIRouter(prefix="/api")
-
-
-def _current_user(request: Request) -> tuple[str, bool]:
-    uid = getattr(request.state, "user_id", None)
-    if not uid:
-        raise HTTPException(status_code=401, detail="authentication required")
-    is_admin = bool(getattr(request.state, "is_admin", False))
-    # Single-user mode user is always admin.
-    if uid == SINGLEUSER_ID:
-        is_admin = True
-    return uid, is_admin
+router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
 
 
 async def _resolve_is_admin(request: Request, user_id: str) -> bool:
@@ -38,8 +28,7 @@ async def _resolve_is_admin(request: Request, user_id: str) -> bool:
 
 
 @router.get("/nodes")
-async def list_nodes(request: Request):
-    uid, _ = _current_user(request)
+async def list_nodes(request: Request, uid: str = Depends(require_user)):
     is_admin = await _resolve_is_admin(request, uid)
     nodes = request.app.state.nodes_repo
     items = await nodes.list_visible_to(uid, is_admin=is_admin)
@@ -75,7 +64,7 @@ def _public_cp_url(request: Request) -> str:
 
 
 @router.get("/daemon-enroll")
-async def daemon_enroll(request: Request):
+async def daemon_enroll(request: Request, uid: str = Depends(require_user)):
     """Return cp_url + shared daemon token + a per-caller `claim_user_id`.
 
     Available to any authenticated user. The shared `MAESTRO_DAEMON_TOKEN`
@@ -84,7 +73,6 @@ async def daemon_enroll(request: Request):
     `/ws/daemon?claim=<user_id>` so the resulting node is owned by the
     operator generating the snippet (rather than the first admin).
     """
-    uid, _ = _current_user(request)
     token = _read_daemon_token()
     return {
         "cp_url": _public_cp_url(request),
@@ -96,14 +84,13 @@ async def daemon_enroll(request: Request):
 
 
 @router.get("/admin/daemon-enroll")
-async def admin_daemon_enroll(request: Request):
+async def admin_daemon_enroll(request: Request, uid: str = Depends(require_user)):
     """Deprecated alias of /api/daemon-enroll kept for one release."""
-    return await daemon_enroll(request)
+    return await daemon_enroll(request, uid)
 
 
 @router.get("/admin/users")
-async def admin_list_users(request: Request):
-    uid, _ = _current_user(request)
+async def admin_list_users(request: Request, uid: str = Depends(require_user)):
     is_admin = await _resolve_is_admin(request, uid)
     if not is_admin:
         raise HTTPException(status_code=403, detail="admin only")
@@ -125,17 +112,15 @@ async def admin_list_users(request: Request):
             }
             for r in rows
         ],
-        "single_user_mode": is_single_user_mode(),
     }
 
 
 @router.post("/admin/users", status_code=201)
-async def admin_create_user(request: Request):
+async def admin_create_user(request: Request, uid: str = Depends(require_user)):
     """Create a new user (admin only). M7.
 
     Body: {"username": str, "password": str (8+ chars), "email": str?, "is_admin": bool?}
     """
-    uid, _ = _current_user(request)
     is_admin = await _resolve_is_admin(request, uid)
     if not is_admin:
         raise HTTPException(status_code=403, detail="admin only")
@@ -174,8 +159,7 @@ async def admin_create_user(request: Request):
 
 
 @router.get("/orgs")
-async def list_orgs(request: Request):
-    uid, _ = _current_user(request)
+async def list_orgs(request: Request, uid: str = Depends(require_user)):
     is_admin = await _resolve_is_admin(request, uid)
     orgs = request.app.state.orgs_repo
     items = await orgs.list_all()
@@ -193,8 +177,7 @@ async def list_orgs(request: Request):
 
 
 @router.post("/orgs")
-async def create_org(request: Request):
-    uid, _ = _current_user(request)
+async def create_org(request: Request, uid: str = Depends(require_user)):
     is_admin = await _resolve_is_admin(request, uid)
     if not is_admin:
         raise HTTPException(status_code=403, detail="admin only")
@@ -217,7 +200,9 @@ async def create_org(request: Request):
 
 
 @router.patch("/nodes/{node_id}")
-async def admin_update_node(request: Request, node_id: str):
+async def admin_update_node(
+    request: Request, node_id: str, uid: str = Depends(require_user),
+):
     """Pivot a node's type / owner / label. Admin only.
 
     Body (any subset):
@@ -226,7 +211,6 @@ async def admin_update_node(request: Request, node_id: str):
       {"label": "rack-7-prod"}                              # rename
       {"label": null}                                       # clear label
     """
-    uid, _ = _current_user(request)
     is_admin = await _resolve_is_admin(request, uid)
     if not is_admin:
         raise HTTPException(status_code=403, detail="admin only")
@@ -289,7 +273,9 @@ async def admin_update_node(request: Request, node_id: str):
 
 
 @router.patch("/admin/users/{user_id}")
-async def admin_update_user(request: Request, user_id: str):
+async def admin_update_user(
+    request: Request, user_id: str, uid: str = Depends(require_user),
+):
     """Update mutable fields on a user. Admin only.
 
     Body: {"is_admin": bool}. Other fields TBD.
@@ -297,7 +283,6 @@ async def admin_update_user(request: Request, user_id: str):
     Refuses to demote the last admin (would lock everyone out of admin
     capabilities), and refuses to operate on the singleuser system row.
     """
-    uid, _ = _current_user(request)
     is_admin = await _resolve_is_admin(request, uid)
     if not is_admin:
         raise HTTPException(status_code=403, detail="admin only")
@@ -347,14 +332,15 @@ async def admin_update_user(request: Request, user_id: str):
 
 
 @router.delete("/admin/users/{user_id}", status_code=204)
-async def admin_delete_user(request: Request, user_id: str):
+async def admin_delete_user(
+    request: Request, user_id: str, uid: str = Depends(require_user),
+):
     """Delete a user. Admin only. Refuses 409 if the user owns deploys/nodes.
 
     api_keys, org_members, node_access cascade away. deploy_versions
     applied_by_user_id is reattributed to 'singleuser' to preserve audit
     history without breaking the FK.
     """
-    uid, _ = _current_user(request)
     is_admin = await _resolve_is_admin(request, uid)
     if not is_admin:
         raise HTTPException(status_code=403, detail="admin only")
@@ -389,7 +375,7 @@ async def admin_delete_user(request: Request, user_id: str):
 
 
 @router.post("/admin/users/{user_id}/reset-password")
-async def admin_reset_user_password(request: Request, user_id: str):
+async def admin_reset_user_password(request: Request, user_id: str, uid: str = Depends(require_user)):
     """Generate a fresh password for the user and return it once.
 
     Admin-only. The new password is shown to the calling admin who is
@@ -398,7 +384,6 @@ async def admin_reset_user_password(request: Request, user_id: str):
 
     Refused on the singleuser fixture row (it has no real password).
     """
-    uid, _ = _current_user(request)
     is_admin = await _resolve_is_admin(request, uid)
     if not is_admin:
         raise HTTPException(status_code=403, detail="admin only")

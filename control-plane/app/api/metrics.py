@@ -1,10 +1,12 @@
 """REST router for time-series metrics + events."""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+
+from ..auth.deps import require_user
 
 
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
 
 
 _VALID_SCOPES = {"host", "component", "deploy"}

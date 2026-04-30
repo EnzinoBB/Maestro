@@ -2,6 +2,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 const BASE = ""; // served from same origin; in dev, Vite proxies /api
 
+export type DeployLatestVersion = {
+  version_n: number;
+  applied_at: number;
+  applied_by_user_id: string;
+  applied_by_username: string | null;
+  result_json: { ok?: boolean; error?: string | null } | null;
+  kind: "apply" | "rollback";
+};
+
 export type Deploy = {
   id: string;
   name: string;
@@ -11,6 +20,7 @@ export type Deploy = {
   state_summary: unknown;
   created_at: number;
   updated_at: number;
+  latest_version: DeployLatestVersion | null;
 };
 
 export type DeployVersion = {
@@ -175,9 +185,10 @@ export function useDeleteUser() {
       if (r.status === 204) return;
       let body: unknown = null;
       try { body = await r.json(); } catch { /* not json */ }
-      const detail = (body as { detail?: unknown } | null)?.detail;
-      if (detail && typeof detail === "object" && "code" in detail) {
-        const d = detail as { code?: string; message?: string; deploys?: number; nodes?: number };
+      // /api/* errors are wrapped as { ok: false, error: { code, message, ... } }
+      const errBody = (body as { error?: unknown } | null)?.error;
+      if (errBody && typeof errBody === "object" && "code" in errBody) {
+        const d = errBody as { code?: string; message?: string; deploys?: number; nodes?: number };
         throw {
           status: r.status, code: d.code, message: d.message ?? "delete failed",
           deploys: d.deploys, nodes: d.nodes,
@@ -185,7 +196,7 @@ export function useDeleteUser() {
       }
       throw {
         status: r.status,
-        message: typeof detail === "string" ? detail : `delete failed (${r.status})`,
+        message: `delete failed (${r.status})`,
       } satisfies DeleteUserError;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "users"] }),
@@ -206,15 +217,13 @@ export function useRollback() {
 
 // ----- Helpers -----
 
-/** Derive a single health label from versions + result_json of the latest one. */
-export function deployHealth(d: Deploy, versions?: DeployVersion[]): {
+/** Derive a single health label from the deploy's latest_version projection. */
+export function deployHealth(d: Deploy): {
   status: "healthy" | "degraded" | "failed" | "unknown";
   label: string;
 } {
   if (d.current_version == null) return { status: "unknown", label: "No version applied" };
-  const latest = versions?.find(v => v.version_n === d.current_version);
-  if (!latest) return { status: "unknown", label: "Unknown" };
-  const ok = latest.result_json?.ok;
+  const ok = d.latest_version?.result_json?.ok;
   if (ok === true) return { status: "healthy", label: "Healthy" };
   if (ok === false) return { status: "failed", label: "Last apply failed" };
   return { status: "unknown", label: "Unknown" };
