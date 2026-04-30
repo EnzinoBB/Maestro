@@ -349,3 +349,147 @@ a { color: inherit; text-decoration: none; }
 .cp-popover { background: var(--bg-1); border: 1px solid var(--border-strong); border-radius: 6px; box-shadow: 0 10px 32px rgba(0,0,0,0.5); animation: cp-slide-down 140ms ease-out; }
 .cp-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: var(--bg-1); border: 1px solid var(--border); border-radius: 6px; animation: cp-slide-down 160ms ease-out; }
 .cp-spinner { width: 56px; height: 56px; border-radius: 999px; border: 2px solid var(--accent); border-top-color: transparent; animation: cp-spin 900ms linear infinite; }
+
+/* ---- Settings screen (per-user account + API keys) ---- */
+
+.cp-settings-header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 24px;
+  padding-bottom: 14px; margin-bottom: 22px;
+  border-bottom: 1px solid var(--border);
+}
+.cp-settings-headermeta {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 5px 10px; background: var(--bg-1);
+  border: 1px solid var(--border); border-radius: 4px;
+}
+
+.cp-settings-section { margin-bottom: 28px; }
+.cp-settings-sectionhead {
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px; margin-bottom: 10px;
+}
+
+.cp-settings-account { padding: 0; }
+.cp-settings-kv { padding: 4px 0; }
+.cp-settings-kv__row {
+  display: grid; grid-template-columns: 140px 1fr;
+  gap: 16px; align-items: center;
+  padding: 10px 16px; border-bottom: 1px solid var(--border);
+}
+.cp-settings-kv__row:last-child { border-bottom: none; }
+.cp-settings-kv__k {
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--fg-muted); font-weight: 500;
+}
+.cp-settings-account__foot {
+  padding: 12px 16px; background: var(--bg-2);
+  border-top: 1px solid var(--border);
+  display: flex; justify-content: flex-end;
+}
+
+.cp-settings-callout {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 14px; margin-bottom: 12px;
+  background: var(--bg-2); border: 1px solid var(--border);
+  border-left: 2px solid var(--info); border-radius: 4px;
+  color: var(--fg-dim);
+}
+.cp-settings-callout__icon { flex: 0 0 auto; color: var(--info); margin-top: 1px; }
+
+.cp-settings-errrow {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  background: color-mix(in oklch, var(--err) 8%, transparent);
+  border: 1px solid color-mix(in oklch, var(--err) 35%, var(--border));
+  border-radius: 4px;
+  color: color-mix(in oklch, var(--err) 65%, var(--fg));
+  font-size: 12px;
+}
+
+.cp-settings-keytable th { font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-muted); }
+.cp-settings-keytable td { padding-top: 9px; padding-bottom: 9px; }
+.cp-settings-keytable tr.is-revoked td { color: var(--fg-muted); }
+.cp-settings-keytable tr.is-revoked td:first-child strong { color: var(--fg-muted); font-weight: 400; }
+
+.cp-settings-statneutral {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 8px; border-radius: 3px;
+  background: var(--bg-2); border: 1px solid var(--border);
+  color: var(--fg-muted); font-size: 11px;
+}
+
+.cp-settings-menu {
+  position: absolute; right: 0; top: 28px; min-width: 160px;
+  background: var(--bg-1); border: 1px solid var(--border-strong);
+  border-radius: 5px; padding: 4px; z-index: 31;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+.cp-settings-menu__item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 10px; border-radius: 3px; font-size: 12px;
+  background: transparent; border: none; color: var(--fg-dim);
+  text-align: left; cursor: pointer;
+}
+.cp-settings-menu__item:hover { background: var(--bg-2); color: var(--fg); }
+.cp-settings-menu__item.is-danger { color: var(--err); }
+.cp-settings-menu__item.is-danger:hover { background: color-mix(in oklch, var(--err) 10%, var(--bg-2)); }
+
+.cp-settings-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.cp-settings-empty__icon {
+  width: 40px; height: 40px; border-radius: 8px;
+  background: color-mix(in oklch, var(--accent) 12%, var(--bg-3));
+  color: var(--accent);
+  display: grid; place-items: center; margin-bottom: 4px;
+}
+
+.cp-settings-modal {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: min(560px, 92vw); background: var(--bg-1);
+  border: 1px solid var(--border-strong); border-radius: 6px;
+  z-index: 60; box-shadow: 0 16px 48px rgba(0,0,0,0.55);
+  animation: cp-slide-down 180ms ease-out;
+  display: flex; flex-direction: column; max-height: 88vh;
+}
+.cp-settings-modal--narrow { width: min(380px, 92vw); }
+.cp-settings-modal__head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+}
+.cp-settings-modal__body { padding: 16px; overflow: auto; }
+
+.cp-settings-warnbanner {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 10px 12px; margin-bottom: 14px;
+  background: color-mix(in oklch, var(--warn) 14%, transparent);
+  border: 1px solid color-mix(in oklch, var(--warn) 40%, var(--border));
+  border-radius: 4px;
+  color: color-mix(in oklch, var(--warn) 70%, var(--fg));
+}
+
+.cp-settings-pwblock {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 14px; background: var(--bg);
+  border: 1px solid var(--border-strong); border-radius: 4px;
+}
+
+.cp-settings-cfgcard { overflow: hidden; }
+.cp-settings-cfgcard__head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 8px 12px; background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+}
+.cp-settings-cfgpre {
+  margin: 0; padding: 12px 14px;
+  background: var(--bg); color: var(--fg-dim);
+  font-family: var(--font-mono); font-size: 11.5px;
+  line-height: 1.55; max-height: 240px; overflow: auto;
+  white-space: pre;
+}
+
+@media (max-width: 720px) {
+  .cp-settings-header { flex-direction: column; gap: 10px; align-items: stretch; }
+  .cp-settings-headermeta { align-self: flex-start; }
+  .cp-settings-kv__row { grid-template-columns: 1fr; gap: 4px; }
+  .cp-settings-sectionhead { flex-direction: column; align-items: stretch; gap: 10px; }
+  .cp-card:has(.cp-settings-keytable) { overflow-x: auto; }
+}
