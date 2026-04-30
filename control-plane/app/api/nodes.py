@@ -10,6 +10,7 @@ from ..auth.deps import require_user
 from ..auth.middleware import SINGLEUSER_ID
 from ..auth.passwords import hash_password
 from ..auth.users_repo import UserAlreadyExists, UserNotFound
+from ..storage_nodes import NodeNotFound
 
 
 router = APIRouter(prefix="/api", dependencies=[Depends(require_user)])
@@ -39,21 +40,7 @@ async def list_nodes(request: Request, uid: str = Depends(require_user)):
     return {"nodes": items}
 
 
-@router.get("/admin/daemon-enroll")
-async def admin_daemon_enroll(request: Request, uid: str = Depends(require_user)):
-    """Return the cp_url + token an operator needs to enroll a new daemon.
-
-    Admin only. The token is read from the MAESTRO_DAEMON_TOKEN env var
-    (set by docker-entrypoint.sh on first boot) with a fallback to the
-    /data/daemon-token file. cp_url comes from MAESTRO_PUBLIC_URL when
-    set (recommended for installs behind a reverse proxy) — otherwise
-    we reflect the request's scheme + Host header so the snippet works
-    out of the box for the operator who's currently looking at the UI.
-    """
-    is_admin = await _resolve_is_admin(request, uid)
-    if not is_admin:
-        raise HTTPException(status_code=403, detail="admin only")
-
+def _read_daemon_token() -> str:
     token = os.environ.get("MAESTRO_DAEMON_TOKEN", "").strip()
     if not token:
         token_file = os.environ.get("MAESTRO_TOKEN_FILE", "/data/daemon-token")
@@ -62,22 +49,44 @@ async def admin_daemon_enroll(request: Request, uid: str = Depends(require_user)
                 token = f.read().strip()
         except OSError:
             token = ""
+    return token
 
+
+def _public_cp_url(request: Request) -> str:
     cp_url = os.environ.get("MAESTRO_PUBLIC_URL", "").rstrip("/")
-    if not cp_url:
-        host = request.headers.get("host", "")
-        scheme = request.url.scheme or "http"
-        if host:
-            cp_url = f"{scheme}://{host}"
-        else:
-            cp_url = "http://127.0.0.1:8000"
+    if cp_url:
+        return cp_url
+    host = request.headers.get("host", "")
+    scheme = request.url.scheme or "http"
+    if host:
+        return f"{scheme}://{host}"
+    return "http://127.0.0.1:8000"
 
+
+@router.get("/daemon-enroll")
+async def daemon_enroll(request: Request, uid: str = Depends(require_user)):
+    """Return cp_url + shared daemon token + a per-caller `claim_user_id`.
+
+    Available to any authenticated user. The shared `MAESTRO_DAEMON_TOKEN`
+    gates which daemons may connect at all; the `claim_user_id` is the
+    caller's id and is intended to be passed by the install snippet to
+    `/ws/daemon?claim=<user_id>` so the resulting node is owned by the
+    operator generating the snippet (rather than the first admin).
+    """
+    token = _read_daemon_token()
     return {
-        "cp_url": cp_url,
+        "cp_url": _public_cp_url(request),
         "token": token,
+        "claim_user_id": uid,
         "install_url": "https://github.com/EnzinoBB/Maestro/releases/latest/download/install-daemon.sh",
         "token_available": bool(token),
     }
+
+
+@router.get("/admin/daemon-enroll")
+async def admin_daemon_enroll(request: Request, uid: str = Depends(require_user)):
+    """Deprecated alias of /api/daemon-enroll kept for one release."""
+    return await daemon_enroll(request, uid)
 
 
 @router.get("/admin/users")
@@ -188,6 +197,181 @@ async def create_org(request: Request, uid: str = Depends(require_user)):
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
     return o
+
+
+@router.patch("/nodes/{node_id}")
+async def admin_update_node(
+    request: Request, node_id: str, uid: str = Depends(require_user),
+):
+    """Pivot a node's type / owner / label. Admin only.
+
+    Body (any subset):
+      {"node_type": "user", "owner_user_id": "usr_..."}     # demote shared→user
+      {"node_type": "shared", "owner_org_id": "org_..."}    # promote user→shared
+      {"label": "rack-7-prod"}                              # rename
+      {"label": null}                                       # clear label
+    """
+    is_admin = await _resolve_is_admin(request, uid)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="admin only")
+    body: dict = {}
+    raw = await request.body()
+    if raw:
+        import json as _json
+        try:
+            body = _json.loads(raw.decode("utf-8"))
+        except Exception:
+            raise HTTPException(status_code=400, detail="invalid JSON body")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON body must be an object")
+
+    node_type = body.get("node_type")
+    owner_user_id = body.get("owner_user_id")
+    owner_org_id = body.get("owner_org_id")
+    label = body.get("label")
+    clear_label = "label" in body and label is None
+
+    if node_type is not None and node_type not in ("user", "shared"):
+        raise HTTPException(status_code=400, detail="node_type must be 'user' or 'shared'")
+    if node_type == "user" and not owner_user_id:
+        # Look at the existing row: maybe the caller is only changing label and the
+        # node is already user-owned. The repo handles that; reject only if the
+        # caller asked for the type change but did not supply the new owner AND
+        # the existing row is shared (no owner_user_id to fall back to).
+        pass
+    nodes = request.app.state.nodes_repo
+    try:
+        await nodes.get(node_id)
+    except NodeNotFound:
+        raise HTTPException(status_code=404, detail="node not found")
+    # Resolve referenced owners exist
+    if owner_user_id:
+        try:
+            await request.app.state.users_repo.get(owner_user_id)
+        except UserNotFound:
+            raise HTTPException(status_code=400, detail="owner_user_id does not exist")
+    if owner_org_id:
+        from ..storage_nodes import OrgNotFound
+        try:
+            await request.app.state.orgs_repo.get(owner_org_id)
+        except OrgNotFound:
+            raise HTTPException(status_code=400, detail="owner_org_id does not exist")
+    try:
+        n = await nodes.update_node(
+            node_id,
+            node_type=node_type,
+            owner_user_id=owner_user_id,
+            owner_org_id=owner_org_id,
+            label=label if not clear_label else None,
+            clear_label=clear_label,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except NodeNotFound:
+        raise HTTPException(status_code=404, detail="node not found")
+    return n
+
+
+@router.patch("/admin/users/{user_id}")
+async def admin_update_user(
+    request: Request, user_id: str, uid: str = Depends(require_user),
+):
+    """Update mutable fields on a user. Admin only.
+
+    Body: {"is_admin": bool}. Other fields TBD.
+
+    Refuses to demote the last admin (would lock everyone out of admin
+    capabilities), and refuses to operate on the singleuser system row.
+    """
+    is_admin = await _resolve_is_admin(request, uid)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="admin only")
+    if user_id == SINGLEUSER_ID:
+        raise HTTPException(status_code=400, detail="cannot modify the system 'singleuser' row")
+
+    body: dict = {}
+    raw = await request.body()
+    if raw:
+        import json as _json
+        try:
+            body = _json.loads(raw.decode("utf-8"))
+        except Exception:
+            raise HTTPException(status_code=400, detail="invalid JSON body")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="JSON body must be an object")
+
+    users = request.app.state.users_repo
+    try:
+        u = await users.get(user_id)
+    except UserNotFound:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    if "is_admin" in body:
+        new_admin = bool(body["is_admin"])
+        if not new_admin and u["is_admin"]:
+            # Block self-demotion if it would leave zero non-singleuser admins
+            import aiosqlite
+            async with aiosqlite.connect(users.path) as db:
+                async with db.execute(
+                    "SELECT COUNT(*) FROM users WHERE is_admin=1 "
+                    "AND id != ? AND id != 'singleuser'",
+                    (user_id,),
+                ) as cur:
+                    other_admins = (await cur.fetchone())[0]
+            if other_admins == 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail="cannot demote the last remaining admin",
+                )
+        await users.set_admin(user_id, new_admin)
+        u = await users.get(user_id)
+    return {
+        "id": u["id"], "username": u["username"], "email": u["email"],
+        "is_admin": u["is_admin"], "created_at": u["created_at"],
+    }
+
+
+@router.delete("/admin/users/{user_id}", status_code=204)
+async def admin_delete_user(
+    request: Request, user_id: str, uid: str = Depends(require_user),
+):
+    """Delete a user. Admin only. Refuses 409 if the user owns deploys/nodes.
+
+    api_keys, org_members, node_access cascade away. deploy_versions
+    applied_by_user_id is reattributed to 'singleuser' to preserve audit
+    history without breaking the FK.
+    """
+    is_admin = await _resolve_is_admin(request, uid)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="admin only")
+    if user_id == SINGLEUSER_ID:
+        raise HTTPException(status_code=400, detail="cannot delete the system 'singleuser' row")
+    if user_id == uid:
+        raise HTTPException(status_code=400, detail="cannot delete yourself")
+
+    users = request.app.state.users_repo
+    try:
+        await users.get(user_id)
+    except UserNotFound:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    deps = await users.count_dependencies(user_id)
+    if deps["deploys"] > 0 or deps["nodes"] > 0:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "user_has_dependencies",
+                "message": (
+                    f"user owns {deps['deploys']} deploy(s) and {deps['nodes']} "
+                    "node(s); reassign or delete those first"
+                ),
+                "deploys": deps["deploys"],
+                "nodes": deps["nodes"],
+            },
+        )
+    await users.delete(user_id)
+    from fastapi.responses import Response
+    return Response(status_code=204)
 
 
 @router.post("/admin/users/{user_id}/reset-password")

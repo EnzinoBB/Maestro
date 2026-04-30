@@ -73,6 +73,54 @@ class UsersRepository:
                 row = await cur.fetchone()
         return _row_to_user(row) if row else None
 
+    async def set_admin(self, user_id: str, is_admin: bool) -> None:
+        async with aiosqlite.connect(self.path) as db:
+            cur = await db.execute(
+                "UPDATE users SET is_admin=? WHERE id=?",
+                (1 if is_admin else 0, user_id),
+            )
+            await db.commit()
+        if cur.rowcount == 0:
+            raise UserNotFound(user_id)
+
+    async def delete(self, user_id: str) -> None:
+        """Delete a user. Cascades clear api_keys, org_members, node_access.
+
+        deploy_versions.applied_by_user_id has no cascade — those rows are
+        first re-attributed to the 'singleuser' system row to preserve audit
+        history. The caller must already have ensured the user owns no live
+        deploys/nodes; otherwise the FK constraints on `deploys.owner_user_id`
+        and `nodes.owner_user_id` (no cascade) will raise IntegrityError.
+        """
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute("PRAGMA foreign_keys = ON;")
+            await db.execute(
+                "UPDATE deploy_versions SET applied_by_user_id='singleuser' "
+                "WHERE applied_by_user_id=?",
+                (user_id,),
+            )
+            cur = await db.execute("DELETE FROM users WHERE id=?", (user_id,))
+            await db.commit()
+        if cur.rowcount == 0:
+            raise UserNotFound(user_id)
+
+    async def count_dependencies(self, user_id: str) -> dict[str, int]:
+        """Counts of records that block deletion (non-cascade FKs).
+
+        Returns counts of deploys and nodes owned by the user. Both must be
+        zero before delete() can succeed.
+        """
+        async with aiosqlite.connect(self.path) as db:
+            async with db.execute(
+                "SELECT COUNT(*) FROM deploys WHERE owner_user_id=?", (user_id,),
+            ) as cur:
+                deploys = (await cur.fetchone())[0]
+            async with db.execute(
+                "SELECT COUNT(*) FROM nodes WHERE owner_user_id=?", (user_id,),
+            ) as cur:
+                nodes = (await cur.fetchone())[0]
+        return {"deploys": int(deploys), "nodes": int(nodes)}
+
     async def count_non_singleuser(self) -> int:
         async with aiosqlite.connect(self.path) as db:
             async with db.execute(

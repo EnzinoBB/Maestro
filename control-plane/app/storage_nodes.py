@@ -121,6 +121,54 @@ class NodesRepository:
                 rows = await cur.fetchall()
         return [_row_to_node(r) for r in rows]
 
+    async def update_node(
+        self,
+        node_id: str,
+        *,
+        node_type: str | None = None,
+        owner_user_id: str | None = None,
+        owner_org_id: str | None = None,
+        label: str | None = None,
+        clear_label: bool = False,
+    ) -> dict[str, Any]:
+        """Atomic update.
+
+        When `node_type` is provided, ownership pivots: 'user' implies a
+        non-null `owner_user_id` and a null `owner_org_id`, 'shared' the
+        opposite. The caller must supply the new owner of the chosen type.
+        Label can be edited independently (pass `clear_label=True` to
+        unset).
+        """
+        existing = await self.get(node_id)  # raises NodeNotFound
+        new_type = node_type or existing["node_type"]
+        if new_type not in ("user", "shared"):
+            raise ValueError(f"invalid node_type: {new_type}")
+
+        if new_type == "user":
+            uid = owner_user_id if owner_user_id is not None else existing["owner_user_id"]
+            oid = None
+            if uid is None:
+                raise ValueError("user-owned node requires owner_user_id")
+        else:  # shared
+            oid = owner_org_id if owner_org_id is not None else existing["owner_org_id"]
+            uid = None
+            if oid is None:
+                raise ValueError("shared node requires owner_org_id")
+
+        new_label = None if clear_label else (label if label is not None else existing["label"])
+
+        async with aiosqlite.connect(self.path) as db:
+            await db.execute("PRAGMA foreign_keys = ON;")
+            cur = await db.execute(
+                "UPDATE nodes SET node_type=?, owner_user_id=?, owner_org_id=?, label=? "
+                "WHERE id=?",
+                (new_type, uid, oid, new_label, node_id),
+            )
+            await db.commit()
+        if cur.rowcount == 0:
+            raise NodeNotFound(node_id)
+        return await self.get(node_id)
+
     async def grant_access(self, node_id: str, user_id: str, role: str = "viewer") -> None:
         if role not in ("viewer", "operator", "admin"):
             raise ValueError(f"invalid role: {role}")

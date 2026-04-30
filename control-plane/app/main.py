@@ -81,18 +81,31 @@ async def lifespan(app: FastAPI):
         existing = await nodes.get_by_host_id(conn.host_id)
         if existing is not None:
             return
-        # Resolve owner
+        # Resolve owner. Priority:
+        #   1. claim_user_id from the connect URL — the operator who generated
+        #      the install snippet. Validated against users table; ignored on
+        #      mismatch.
+        #   2. First non-singleuser admin.
+        #   3. singleuser fallback (fresh install with no real admins yet).
         owner = SINGLEUSER_ID
-        # In multi-user mode the singleuser still exists but is dormant.
-        # If a real admin exists, use them; otherwise fall back to singleuser.
         async with __import__("aiosqlite").connect(db_path) as _db:
-            async with _db.execute(
-                "SELECT id FROM users WHERE is_admin=1 AND id != 'singleuser' "
-                "ORDER BY created_at ASC LIMIT 1"
-            ) as cur:
-                row = await cur.fetchone()
-                if row:
-                    owner = row[0]
+            claim = getattr(conn, "claim_user_id", None)
+            if claim:
+                async with _db.execute(
+                    "SELECT id FROM users WHERE id=? AND id != 'singleuser'",
+                    (claim,),
+                ) as cur:
+                    row = await cur.fetchone()
+                    if row:
+                        owner = row[0]
+            if owner == SINGLEUSER_ID:
+                async with _db.execute(
+                    "SELECT id FROM users WHERE is_admin=1 AND id != 'singleuser' "
+                    "ORDER BY created_at ASC LIMIT 1"
+                ) as cur:
+                    row = await cur.fetchone()
+                    if row:
+                        owner = row[0]
         await nodes.upsert_user_node(host_id=conn.host_id, owner_user_id=owner)
     hub.add_register_handler(_auto_register_node)
 
@@ -153,11 +166,13 @@ def create_app() -> FastAPI:
         ws: WebSocket,
         host_id: str = Query(...),
         token: str = Query(""),
+        claim: str = Query(""),
     ):
         expected = os.environ.get("MAESTRO_DAEMON_TOKEN") or None
         await app.state.hub.handle_daemon_ws(
             ws, host_id=host_id, token=token or None,
             expected_token=expected,
+            claim_user_id=claim or None,
         )
 
     @app.websocket("/ws/ui")

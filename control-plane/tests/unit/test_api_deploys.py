@@ -78,7 +78,9 @@ def test_list_deploys_projects_latest_version(client):
     # important thing is that the projection is populated and not "unknown".
     assert isinstance(lv["result_json"], dict)
     assert "ok" in lv["result_json"]
-    assert lv["applied_by_user_id"] == "singleuser"
+    # Attributed to the calling user (admin from the fixture).
+    assert isinstance(lv["applied_by_user_id"], str)
+    assert lv["applied_by_user_id"] != "singleuser"
 
 
 def test_get_deploy_includes_latest_version(client):
