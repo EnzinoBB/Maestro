@@ -327,8 +327,11 @@ do_upgrade() {
   fi
   # Derive CP_URL from existing config if not overridden.
   # Config stores ws://host/ws/daemon; download_binary needs http(s)://host.
+  # Use awk's sub() to strip the "endpoint:" prefix in one shot — splitting
+  # on ': *' as a field separator matches every colon in the URL (including
+  # the one in ws:// and the host:port), leaving CP_URL as just "ws".
   if [[ -z "$CP_URL" ]]; then
-    CP_URL="$(awk -F': *' '/^endpoint:/ {print $2; exit}' "$CFG_FILE" | sed 's#/ws/daemon$##')"
+    CP_URL="$(awk '/^endpoint:/ {sub(/^endpoint:[ \t]*/, ""); print; exit}' "$CFG_FILE" | sed 's#/ws/daemon.*$##')"
     CP_URL="${CP_URL/#ws:\/\//http://}"
     CP_URL="${CP_URL/#wss:\/\//https://}"
   fi
